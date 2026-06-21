@@ -1,9 +1,11 @@
 import http from "http";
-import { isSuperuser, recordGoogleRequest } from "./accounts";
+import { getAdditionalPrompt, isSuperuser, recordGoogleRequest } from "./accounts";
 import { authenticateBearer, invalidateGoogleLink } from "./oauth";
-import { log } from "./log";
+import { buildDevicesForLLM, runLLMWithDeviceTools } from "./llm";
+import { log, logErr } from "./log";
 import { getExecuteAckState, getQueryState } from "./queryHandlers";
 import { Device, loadDevices } from "./storage";
+import { registry as wsRegistry } from "./wsServer";
 
 type Intent = {
     intent: string;
@@ -95,6 +97,25 @@ function handleExecute(requestId: string, payload: ExecutePayload) {
     };
 }
 
+async function dispatchExecuteToLLM(config: { accountPubkey: string; payload: ExecutePayload }): Promise<void> {
+    const devices = buildDevicesForLLM({
+        accountPubkey: config.accountPubkey,
+        isConnected: wsRegistry.isConnected,
+    });
+    const prompt = `Google Home received a user voice command and interpreted it as the following EXECUTE intent payload from the Smart Home protocol:
+
+${JSON.stringify(config.payload, undefined, 2)}
+
+Decide which of the user's connected devices best matches this request, then call the appropriate tool with a JSON payload the device will understand. If nothing matches cleanly, fall back to a device that advertises a "show" or "message" capability and forward a human-readable summary of the request. Keep the final reply short.`;
+    await runLLMWithDeviceTools({
+        accountPubkey: config.accountPubkey,
+        prompt,
+        devices,
+        additionalPrompt: getAdditionalPrompt(config.accountPubkey),
+        sendToDevice: ({ devicePubkey, payload }) => wsRegistry.sendToDevice({ devicePubkey, payload }),
+    });
+}
+
 function handleDisconnect(requestId: string, googleUserId: string) {
     invalidateGoogleLink(googleUserId);
     return { requestId, payload: {} };
@@ -134,6 +155,8 @@ export async function handleFulfillment(req: http.IncomingMessage, res: http.Ser
     }
     if (intent === "action.devices.EXECUTE") {
         sendJSON(res, 200, handleExecute(requestId, payload as ExecutePayload));
+        dispatchExecuteToLLM({ accountPubkey: userId, payload: payload as ExecutePayload })
+            .catch(err => logErr("llm-execute", `EXECUTE-via-LLM failed for user=${userId.slice(0, 16)}...`, err));
         return;
     }
     if (intent === "action.devices.DISCONNECT") {

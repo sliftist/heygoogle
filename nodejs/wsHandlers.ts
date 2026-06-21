@@ -12,7 +12,7 @@ import {
     setAdditionalPrompt,
     touchAccount,
 } from "./accounts";
-import { LLM_INACTIVE_DEVICES_IN_CONTEXT, MAX_ADDITIONAL_PROMPT_LEN, SEND_TO_DEVICE_DEFAULT_TIMEOUT_MS } from "./config";
+import { MAX_ADDITIONAL_PROMPT_LEN, SEND_TO_DEVICE_DEFAULT_TIMEOUT_MS } from "./config";
 import { db, todayYMD } from "./db";
 import { pubkeyFingerprint } from "./fingerprint";
 import { assignShortIds, buildSystemPrompt } from "./llm";
@@ -29,21 +29,10 @@ import {
     updateDeviceCapabilities,
     updateDeviceDescription,
 } from "./devices";
-import { runLLMWithDeviceTools, DeviceForLLM } from "./llm";
+import { buildDevicesForLLM, runLLMWithDeviceTools } from "./llm";
 
-function devicesForLLMContext(accountPubkey: string, registry: WsRegistry): DeviceForLLM[] {
-    const all = listDevicesForAccount(accountPubkey);
-    const active = all.filter(d => registry.isConnected(d.device_pubkey));
-    const inactive = all.filter(d => !registry.isConnected(d.device_pubkey))
-        .sort((a, b) => b.last_active_at - a.last_active_at)
-        .slice(0, LLM_INACTIVE_DEVICES_IN_CONTEXT);
-    return [...active, ...inactive].map(d => ({
-        devicePubkey: d.device_pubkey,
-        description: d.description,
-        capabilities: JSON.parse(d.capabilities_json),
-        connected: registry.isConnected(d.device_pubkey),
-        lastActiveAt: d.last_active_at,
-    }));
+function devicesForLLMContext(accountPubkey: string, registry: WsRegistry) {
+    return buildDevicesForLLM({ accountPubkey, isConnected: registry.isConnected });
 }
 
 export type Secured = {
@@ -190,20 +179,24 @@ export async function dispatch(config: {
         "list-google-requests": () => {
             if (!isSuperuser(ctx.pubkey)) throw new Error("This packet requires superuser");
             const limit = typeof data.limit === "number" ? Math.min(Math.max(data.limit, 1), 100) : 100;
-            const requestRows = listSuGoogleRequests(ctx.pubkey, limit);
-            const llmRows = listSuLlmResponses(ctx.pubkey, limit);
-            return {
-                requests: requestRows.map(r => {
-                    let body: unknown;
-                    try { body = JSON.parse(r.raw_body); } catch { body = r.raw_body; }
-                    return { received_at: r.received_at, intent: r.intent, body };
-                }),
-                llmResponses: llmRows.map(r => {
-                    let response: unknown;
-                    try { response = JSON.parse(r.response_json); } catch { response = r.response_json; }
-                    return { received_at: r.received_at, iter: r.iter, costUsd: r.cost_usd, response };
-                }),
-            };
+            const googleEntries = listSuGoogleRequests(ctx.pubkey, limit).map(r => {
+                let body: unknown;
+                try { body = JSON.parse(r.raw_body); } catch { body = r.raw_body; }
+                return { received_at: r.received_at, intent: r.intent, body };
+            });
+            const llmEntries = listSuLlmResponses(ctx.pubkey, limit).map(r => {
+                let response: unknown;
+                try { response = JSON.parse(r.response_json); } catch { response = r.response_json; }
+                return {
+                    received_at: r.received_at,
+                    intent: "LLM_RESPONSE",
+                    body: { iter: r.iter, costUsd: r.cost_usd, response },
+                };
+            });
+            const combined = [...googleEntries, ...llmEntries]
+                .sort((a, b) => b.received_at - a.received_at)
+                .slice(0, limit);
+            return { requests: combined };
         },
         "total-daily-cost": () => {
             if (!isSuperuser(ctx.pubkey)) throw new Error("This packet requires superuser");

@@ -1,11 +1,13 @@
 import fs from "fs";
 import {
     LLM_DAILY_COST_CAP_USD,
+    LLM_INACTIVE_DEVICES_IN_CONTEXT,
     LLM_MAX_TOOL_ITERATIONS,
     LLM_MODEL,
     OPENROUTER_KEY_PATH,
 } from "./config";
 import { addToDailyCost, assertDailyCostBelowCap, getCurrentDailyCost, isSuperuser, recordLlmResponse } from "./accounts";
+import { listDevicesForAccount } from "./devices";
 import { log } from "./log";
 
 type ToolDef = {
@@ -46,6 +48,24 @@ export type DeviceForLLM = {
     connected: boolean;
     lastActiveAt: number;
 };
+
+export function buildDevicesForLLM(config: {
+    accountPubkey: string;
+    isConnected: (devicePubkey: string) => boolean;
+}): DeviceForLLM[] {
+    const all = listDevicesForAccount(config.accountPubkey);
+    const active = all.filter(d => config.isConnected(d.device_pubkey));
+    const inactive = all.filter(d => !config.isConnected(d.device_pubkey))
+        .sort((a, b) => b.last_active_at - a.last_active_at)
+        .slice(0, LLM_INACTIVE_DEVICES_IN_CONTEXT);
+    return [...active, ...inactive].map(d => ({
+        devicePubkey: d.device_pubkey,
+        description: d.description,
+        capabilities: JSON.parse(d.capabilities_json),
+        connected: config.isConnected(d.device_pubkey),
+        lastActiveAt: d.last_active_at,
+    }));
+}
 
 let cachedKey: string | undefined;
 function loadOpenRouterKey(): string {

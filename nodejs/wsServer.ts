@@ -54,7 +54,7 @@ function pickDeviceConnection(devicePubkey: string): ConnectionState | undefined
     return set.values().next().value;
 }
 
-const registry: WsRegistry = {
+export const registry: WsRegistry = {
     isConnected: (pubkey: string) => byPubkey.has(pubkey),
     sendToDevice: ({ devicePubkey, payload, timeoutMs }) => {
         const conn = pickDeviceConnection(devicePubkey);
