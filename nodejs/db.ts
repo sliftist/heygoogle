@@ -15,7 +15,8 @@ CREATE TABLE IF NOT EXISTS accounts (
     created_at INTEGER NOT NULL,
     daily_cost_usd REAL NOT NULL DEFAULT 0,
     daily_cost_date TEXT NOT NULL DEFAULT '',
-    superuser INTEGER NOT NULL DEFAULT 0
+    superuser INTEGER NOT NULL DEFAULT 0,
+    additional_prompt TEXT NOT NULL DEFAULT ''
 );
 
 CREATE TABLE IF NOT EXISTS account_ips (
@@ -76,6 +77,9 @@ CREATE INDEX IF NOT EXISTS idx_su_log_account ON superuser_request_log(account_p
 const accountCols = db.pragma("table_info(accounts)") as { name: string }[];
 if (!accountCols.some(c => c.name === "superuser")) {
     db.exec(`ALTER TABLE accounts ADD COLUMN superuser INTEGER NOT NULL DEFAULT 0`);
+}
+if (!accountCols.some(c => c.name === "additional_prompt")) {
+    db.exec(`ALTER TABLE accounts ADD COLUMN additional_prompt TEXT NOT NULL DEFAULT ''`);
 }
 
 export function todayYMD(): string {

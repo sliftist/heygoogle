@@ -1,17 +1,20 @@
 import {
     addGoogleLink,
     ensureAccount,
+    getAdditionalPrompt,
     getCurrentDailyCost,
     isSuperuser,
     listGoogleLinks,
     listSuGoogleRequests,
     LLM_DAILY_COST_CAP_USD,
     removeGoogleLink,
+    setAdditionalPrompt,
     touchAccount,
 } from "./accounts";
-import { LLM_INACTIVE_DEVICES_IN_CONTEXT, SEND_TO_DEVICE_DEFAULT_TIMEOUT_MS } from "./config";
+import { LLM_INACTIVE_DEVICES_IN_CONTEXT, MAX_ADDITIONAL_PROMPT_LEN, SEND_TO_DEVICE_DEFAULT_TIMEOUT_MS } from "./config";
 import { todayYMD } from "./db";
 import { pubkeyFingerprint } from "./fingerprint";
+import { assignShortIds, buildSystemPrompt } from "./llm";
 import {
     consumePendingPairing,
     isDevice,
@@ -25,6 +28,21 @@ import {
     updateDeviceDescription,
 } from "./devices";
 import { runLLMWithDeviceTools, DeviceForLLM } from "./llm";
+
+function devicesForLLMContext(accountPubkey: string, registry: WsRegistry): DeviceForLLM[] {
+    const all = listDevicesForAccount(accountPubkey);
+    const active = all.filter(d => registry.isConnected(d.device_pubkey));
+    const inactive = all.filter(d => !registry.isConnected(d.device_pubkey))
+        .sort((a, b) => b.last_active_at - a.last_active_at)
+        .slice(0, LLM_INACTIVE_DEVICES_IN_CONTEXT);
+    return [...active, ...inactive].map(d => ({
+        devicePubkey: d.device_pubkey,
+        description: d.description,
+        capabilities: JSON.parse(d.capabilities_json),
+        connected: registry.isConnected(d.device_pubkey),
+        lastActiveAt: d.last_active_at,
+    }));
+}
 
 export type Secured = {
     type: string;
@@ -132,24 +150,29 @@ export async function dispatch(config: {
         "llm-prompt": async () => {
             const prompt = String(data.prompt || "");
             if (!prompt) throw new Error("Missing prompt");
-            const all = listDevicesForAccount(ctx.pubkey);
-            const active = all.filter(d => registry.isConnected(d.device_pubkey));
-            const inactive = all.filter(d => !registry.isConnected(d.device_pubkey))
-                .sort((a, b) => b.last_active_at - a.last_active_at)
-                .slice(0, LLM_INACTIVE_DEVICES_IN_CONTEXT);
-            const devicesForLLM: DeviceForLLM[] = [...active, ...inactive].map(d => ({
-                devicePubkey: d.device_pubkey,
-                description: d.description,
-                capabilities: JSON.parse(d.capabilities_json),
-                connected: registry.isConnected(d.device_pubkey),
-                lastActiveAt: d.last_active_at,
-            }));
+            const devicesForLLM = devicesForLLMContext(ctx.pubkey, registry);
             return runLLMWithDeviceTools({
                 accountPubkey: ctx.pubkey,
                 prompt,
                 devices: devicesForLLM,
+                additionalPrompt: getAdditionalPrompt(ctx.pubkey),
                 sendToDevice: ({ devicePubkey, payload }) => registry.sendToDevice({ devicePubkey, payload }),
             });
+        },
+        "get-prompts": () => {
+            const devicesForLLM = devicesForLLMContext(ctx.pubkey, registry);
+            const assigned = assignShortIds(devicesForLLM);
+            const additionalPrompt = getAdditionalPrompt(ctx.pubkey);
+            return {
+                systemPrompt: buildSystemPrompt({ assigned, additionalPrompt }),
+                additionalPrompt,
+                maxAdditionalPromptLen: MAX_ADDITIONAL_PROMPT_LEN,
+            };
+        },
+        "set-additional-prompt": () => {
+            if (typeof data.text !== "string") throw new Error("Missing text (must be a string; pass '' to clear)");
+            setAdditionalPrompt({ pubkey: ctx.pubkey, text: data.text });
+            return { ok: true };
         },
         "daily-cost": () => ({
             usd: getCurrentDailyCost(ctx.pubkey),

@@ -65,12 +65,12 @@ function shortIdFor(index: number): string {
     return `dev${index + 1}`;
 }
 
-type DeviceTool = {
+export type DeviceTool = {
     shortId: string;
     device: DeviceForLLM;
 };
 
-function assignShortIds(devices: DeviceForLLM[]): DeviceTool[] {
+export function assignShortIds(devices: DeviceForLLM[]): DeviceTool[] {
     return devices.map((device, i) => ({ shortId: shortIdFor(i), device }));
 }
 
@@ -103,6 +103,20 @@ function devicesSummary(assigned: DeviceTool[]): string {
     }).join("\n");
 }
 
+export function buildSystemPrompt(config: {
+    assigned: DeviceTool[];
+    additionalPrompt: string;
+}): string {
+    let prompt = `You are a control assistant for a user's connected devices. Each device has a short ID (dev1, dev2, ...) and a human description. Refer to devices by their short ID in your replies. Use the corresponding tool to send a JSON payload to a device; it returns the device's response. Prefer CONNECTED devices when possible. Keep replies short.
+
+Available devices:
+${devicesSummary(config.assigned)}`;
+    if (config.additionalPrompt.trim()) {
+        prompt += `\n\nAdditional instructions from the user:\n${config.additionalPrompt}`;
+    }
+    return prompt;
+}
+
 async function callOpenRouter(config: {
     messages: ChatMessage[];
     tools: ToolDef[];
@@ -133,6 +147,7 @@ export async function runLLMWithDeviceTools(config: {
     accountPubkey: string;
     prompt: string;
     devices: DeviceForLLM[];
+    additionalPrompt: string;
     sendToDevice: (config: { devicePubkey: string; payload: unknown }) => Promise<unknown>;
 }): Promise<{ reply: string; toolCallsUsed: number; costUsd: number; dailyCostUsd: number }> {
     assertDailyCostBelowCap(config.accountPubkey);
@@ -145,10 +160,7 @@ export async function runLLMWithDeviceTools(config: {
     const messages: ChatMessage[] = [
         {
             role: "system",
-            content: `You are a control assistant for a user's connected devices. Each device has a short ID (dev1, dev2, ...) and a human description. Refer to devices by their short ID in your replies. Use the corresponding tool to send a JSON payload to a device; it returns the device's response. Prefer CONNECTED devices when possible. Keep replies short.
-
-Available devices:
-${devicesSummary(assigned)}`,
+            content: buildSystemPrompt({ assigned, additionalPrompt: config.additionalPrompt }),
         },
         { role: "user", content: config.prompt },
     ];
