@@ -43,7 +43,7 @@ export const PENDING_PAIRING_TTL_MS = 10 * 60 * 1000;
 
 export const SEND_TO_DEVICE_DEFAULT_TIMEOUT_MS = 10 * 1000;
 
-export const LLM_MODEL = "google/gemini-3.1-flash-lite";
+export const LLM_MODEL = "~google/gemini-pro-latest";
 export const LLM_DAILY_COST_CAP_USD = 0.15;
 export const LLM_MAX_TOOL_ITERATIONS = 10;
 export const LLM_INACTIVE_DEVICES_IN_CONTEXT = 3;
