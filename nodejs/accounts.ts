@@ -216,3 +216,62 @@ export function recordLlmResponse(config: { accountPubkey: string; iter: number;
 export function listSuLlmResponses(accountPubkey: string, limit = MAX_SU_GOOGLE_REQUESTS): SuLlmResponseRow[] {
     return stmtListSuLlmResponses.all(accountPubkey, limit) as SuLlmResponseRow[];
 }
+
+const stmtInsertSuToolCall = db.prepare(`
+INSERT INTO superuser_tool_call_log (account_pubkey, received_at, tool_name, device_pubkey, arguments_raw, sent_payload_json, result_json, error_message)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+`);
+
+const stmtTrimSuToolCalls = db.prepare(`
+DELETE FROM superuser_tool_call_log
+WHERE account_pubkey = ? AND id NOT IN (
+    SELECT id FROM superuser_tool_call_log
+    WHERE account_pubkey = ?
+    ORDER BY id DESC
+    LIMIT ?
+)
+`);
+
+const stmtListSuToolCalls = db.prepare(`
+SELECT received_at, tool_name, device_pubkey, arguments_raw, sent_payload_json, result_json, error_message
+FROM superuser_tool_call_log
+WHERE account_pubkey = ?
+ORDER BY id DESC
+LIMIT ?
+`);
+
+export type SuToolCallRow = {
+    received_at: number;
+    tool_name: string;
+    device_pubkey: string;
+    arguments_raw: string;
+    sent_payload_json: string;
+    result_json: string | null;
+    error_message: string | null;
+};
+
+export function recordToolCall(config: {
+    accountPubkey: string;
+    toolName: string;
+    devicePubkey: string;
+    argumentsRaw: string;
+    sentPayload: unknown;
+    result?: unknown;
+    error?: string;
+}): void {
+    stmtInsertSuToolCall.run(
+        config.accountPubkey,
+        Date.now(),
+        config.toolName,
+        config.devicePubkey,
+        config.argumentsRaw,
+        JSON.stringify(config.sentPayload),
+        config.error === undefined ? JSON.stringify(config.result) : null,
+        config.error === undefined ? null : config.error,
+    );
+    stmtTrimSuToolCalls.run(config.accountPubkey, config.accountPubkey, MAX_SU_GOOGLE_REQUESTS);
+}
+
+export function listSuToolCalls(accountPubkey: string, limit = MAX_SU_GOOGLE_REQUESTS): SuToolCallRow[] {
+    return stmtListSuToolCalls.all(accountPubkey, limit) as SuToolCallRow[];
+}

@@ -6,7 +6,7 @@ import {
     LLM_MODEL,
     OPENROUTER_KEY_PATH,
 } from "./config";
-import { addToDailyCost, assertDailyCostBelowCap, getCurrentDailyCost, isSuperuser, recordLlmResponse } from "./accounts";
+import { addToDailyCost, assertDailyCostBelowCap, getCurrentDailyCost, isSuperuser, recordLlmResponse, recordToolCall } from "./accounts";
 import { listDevicesForAccount } from "./devices";
 import { log } from "./log";
 
@@ -221,18 +221,42 @@ export async function runLLMWithDeviceTools(config: {
         for (const tc of msg.tool_calls) {
             toolCallsUsed++;
             const device = toolMap.get(tc.function.name);
+            const argumentsRaw = tc.function.arguments || "";
+            let sentPayload: unknown = undefined;
             let toolResult: unknown;
+            let errMsg: string | undefined;
             if (!device) {
-                toolResult = { error: `Unknown tool ${tc.function.name}` };
+                errMsg = `Unknown tool ${tc.function.name}`;
+                toolResult = { error: errMsg };
             } else {
                 try {
-                    const args = JSON.parse(tc.function.arguments || "{}") as { payload?: unknown };
-                    const payload = args.payload === undefined ? args : args.payload;
-                    toolResult = await config.sendToDevice({ devicePubkey: device.devicePubkey, payload });
+                    const args = JSON.parse(argumentsRaw || "{}") as { payload?: unknown };
+                    sentPayload = args.payload === undefined ? args : args.payload;
+                    toolResult = await config.sendToDevice({ devicePubkey: device.devicePubkey, payload: sentPayload });
                 } catch (err) {
-                    toolResult = { error: (err as Error).message || String(err) };
+                    errMsg = (err as Error).message || String(err);
+                    toolResult = { error: errMsg };
                 }
             }
+
+            if (su) {
+                log("llm", `[SU] tool-call account=${config.accountPubkey.slice(0, 16)}... tool=${tc.function.name} device=${device ? device.devicePubkey.slice(0, 16) + "..." : "(unknown)"}`, {
+                    argumentsRaw,
+                    sentPayload,
+                    result: toolResult,
+                    error: errMsg,
+                });
+                recordToolCall({
+                    accountPubkey: config.accountPubkey,
+                    toolName: tc.function.name,
+                    devicePubkey: device ? device.devicePubkey : "",
+                    argumentsRaw,
+                    sentPayload,
+                    result: errMsg === undefined ? toolResult : undefined,
+                    error: errMsg,
+                });
+            }
+
             messages.push({ role: "tool", tool_call_id: tc.id, content: JSON.stringify(toolResult) });
         }
     }

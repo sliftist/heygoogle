@@ -7,6 +7,7 @@ import {
     listGoogleLinks,
     listSuGoogleRequests,
     listSuLlmResponses,
+    listSuToolCalls,
     LLM_DAILY_COST_CAP_USD,
     removeGoogleLink,
     setAdditionalPrompt,
@@ -193,7 +194,27 @@ export async function dispatch(config: {
                     body: { iter: r.iter, costUsd: r.cost_usd, response },
                 };
             });
-            const combined = [...googleEntries, ...llmEntries]
+            const toolEntries = listSuToolCalls(ctx.pubkey, limit).map(r => {
+                let sentPayload: unknown;
+                try { sentPayload = JSON.parse(r.sent_payload_json); } catch { sentPayload = r.sent_payload_json; }
+                let result: unknown;
+                if (r.result_json !== null) {
+                    try { result = JSON.parse(r.result_json); } catch { result = r.result_json; }
+                }
+                return {
+                    received_at: r.received_at,
+                    intent: "TOOL_CALL",
+                    body: {
+                        toolName: r.tool_name,
+                        devicePubkey: r.device_pubkey,
+                        argumentsRaw: r.arguments_raw,
+                        sentPayload,
+                        result,
+                        error: r.error_message,
+                    },
+                };
+            });
+            const combined = [...googleEntries, ...llmEntries, ...toolEntries]
                 .sort((a, b) => b.received_at - a.received_at)
                 .slice(0, limit);
             return { requests: combined };
