@@ -27,10 +27,6 @@ async function route(req: http.IncomingMessage, res: http.ServerResponse) {
         sendText(res, 200, "heygoogle smart home action — OK");
         return;
     }
-    if (method === "GET" && pathname === "/healthz") {
-        sendText(res, 200, "ok");
-        return;
-    }
     if (method === "GET" && pathname === "/oauth/authorize") {
         handleAuthorize(req, res, url);
         return;
