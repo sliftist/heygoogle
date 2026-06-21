@@ -179,3 +179,40 @@ export function recordGoogleRequest(config: { accountPubkey: string; intent: str
 export function listSuGoogleRequests(accountPubkey: string, limit = MAX_SU_GOOGLE_REQUESTS): SuRequestRow[] {
     return stmtListSuRequests.all(accountPubkey, limit) as SuRequestRow[];
 }
+
+const stmtInsertSuLlmResponse = db.prepare(`
+INSERT INTO superuser_llm_response_log (account_pubkey, received_at, iter, cost_usd, response_json) VALUES (?, ?, ?, ?, ?)
+`);
+
+const stmtTrimSuLlmResponses = db.prepare(`
+DELETE FROM superuser_llm_response_log
+WHERE account_pubkey = ? AND id NOT IN (
+    SELECT id FROM superuser_llm_response_log
+    WHERE account_pubkey = ?
+    ORDER BY id DESC
+    LIMIT ?
+)
+`);
+
+const stmtListSuLlmResponses = db.prepare(`
+SELECT received_at, iter, cost_usd, response_json FROM superuser_llm_response_log
+WHERE account_pubkey = ?
+ORDER BY id DESC
+LIMIT ?
+`);
+
+export type SuLlmResponseRow = {
+    received_at: number;
+    iter: number;
+    cost_usd: number;
+    response_json: string;
+};
+
+export function recordLlmResponse(config: { accountPubkey: string; iter: number; costUsd: number; response: unknown }): void {
+    stmtInsertSuLlmResponse.run(config.accountPubkey, Date.now(), config.iter, config.costUsd, JSON.stringify(config.response));
+    stmtTrimSuLlmResponses.run(config.accountPubkey, config.accountPubkey, MAX_SU_GOOGLE_REQUESTS);
+}
+
+export function listSuLlmResponses(accountPubkey: string, limit = MAX_SU_GOOGLE_REQUESTS): SuLlmResponseRow[] {
+    return stmtListSuLlmResponses.all(accountPubkey, limit) as SuLlmResponseRow[];
+}

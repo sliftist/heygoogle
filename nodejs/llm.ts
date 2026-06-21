@@ -5,7 +5,7 @@ import {
     LLM_MODEL,
     OPENROUTER_KEY_PATH,
 } from "./config";
-import { addToDailyCost, assertDailyCostBelowCap, getCurrentDailyCost, isSuperuser } from "./accounts";
+import { addToDailyCost, assertDailyCostBelowCap, getCurrentDailyCost, isSuperuser, recordLlmResponse } from "./accounts";
 import { log } from "./log";
 
 type ToolDef = {
@@ -182,6 +182,7 @@ export async function runLLMWithDeviceTools(config: {
 
         if (su) {
             log("llm", `[SU] response account=${config.accountPubkey.slice(0, 16)}... iter=${iter} cost=$${cost}`, response);
+            recordLlmResponse({ accountPubkey: config.accountPubkey, iter, costUsd: cost, response });
         }
 
         const choice = response.choices[0];

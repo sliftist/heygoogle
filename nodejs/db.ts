@@ -72,6 +72,16 @@ CREATE TABLE IF NOT EXISTS superuser_request_log (
     raw_body TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_su_log_account ON superuser_request_log(account_pubkey, id DESC);
+
+CREATE TABLE IF NOT EXISTS superuser_llm_response_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    account_pubkey TEXT NOT NULL,
+    received_at INTEGER NOT NULL,
+    iter INTEGER NOT NULL,
+    cost_usd REAL NOT NULL,
+    response_json TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_su_llm_log_account ON superuser_llm_response_log(account_pubkey, id DESC);
 `);
 
 const accountCols = db.pragma("table_info(accounts)") as { name: string }[];
