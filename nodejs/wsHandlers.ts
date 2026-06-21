@@ -12,7 +12,7 @@ import {
     touchAccount,
 } from "./accounts";
 import { LLM_INACTIVE_DEVICES_IN_CONTEXT, MAX_ADDITIONAL_PROMPT_LEN, SEND_TO_DEVICE_DEFAULT_TIMEOUT_MS } from "./config";
-import { todayYMD } from "./db";
+import { db, todayYMD } from "./db";
 import { pubkeyFingerprint } from "./fingerprint";
 import { assignShortIds, buildSystemPrompt } from "./llm";
 import {
@@ -195,6 +195,19 @@ export async function dispatch(config: {
                     try { body = JSON.parse(r.raw_body); } catch { body = r.raw_body; }
                     return { received_at: r.received_at, intent: r.intent, body };
                 }),
+            };
+        },
+        "total-daily-cost": () => {
+            if (!isSuperuser(ctx.pubkey)) throw new Error("This packet requires superuser");
+            const today = todayYMD();
+            const row = db.prepare(`
+                SELECT COALESCE(SUM(daily_cost_usd), 0) AS total, COUNT(*) AS users
+                FROM accounts WHERE daily_cost_date = ?
+            `).get(today) as { total: number; users: number };
+            return {
+                totalUsd: row.total,
+                accountsContributing: row.users,
+                date: today,
             };
         },
     };
