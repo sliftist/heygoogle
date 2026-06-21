@@ -160,7 +160,7 @@ The `agent_id=gridvid-0046ef` identifies this action in Google's directory. The 
 ### Three URLs in play
 
 - **`GET /oauth/authorize`** — Google Home opens this (whether they reached us via the deep link above or via in-Home-app search). We validate `client_id` + `redirect_uri` (must be on the Google allowlist) then 302-redirect to the **external** authorize page (`https://vidgridweb.com?page=heygoogle`) with all query params preserved.
-- **`POST /oauth/token`** — Google exchanges `code` here. The code is the user's **base64 SPKI pubkey**; we validate it parses as P-256 and mint an access+refresh token tied to that pubkey + a synthetic `google_user_id`. Refresh-token grant works the standard way.
+- **`POST /oauth/token`** — Google exchanges `code` here. The code is a **base64-encoded signed envelope** with `secured.type = "oauth-link"` — see "Signed OAuth code format" below. We verify the signature, extract the embedded pubkey, and mint an access+refresh token tied to that pubkey + a synthetic `google_user_id`. Refresh-token grant works the standard way.
 - **`POST /smarthome/fulfillment`** — Google calls this for SYNC/QUERY/EXECUTE/DISCONNECT. Bearer token resolves to `{ pubkey, googleUserId }`. DISCONNECT invalidates only the affected `google_user_id`, never the account.
 
 ### External page contract
@@ -168,10 +168,39 @@ The `agent_id=gridvid-0046ef` identifies this action in Google's directory. The 
 The external page at `https://vidgridweb.com?page=heygoogle` receives the query string `?client_id=...&redirect_uri=...&response_type=code&state=...`. It must:
 
 1. Generate or load (from IndexedDB) the user's P-256 keypair.
-2. Export the public key as base64 SPKI.
-3. Redirect the browser to `<redirect_uri>?code=<base64-spki-pubkey>&state=<state>`.
+2. Build a signed envelope (see next section) and base64-encode it as the `code`.
+3. Redirect the browser to `<redirect_uri>?code=<signed-envelope-base64>&state=<state>`.
 
-That's it. No backend call to us. The pubkey-as-code piggybacks the standard OAuth flow.
+That's it. No backend call to us. The signed code piggybacks the standard OAuth flow.
+
+### Signed OAuth code format
+
+The `code` parameter is a base64-encoded JSON envelope — same shape as WebSocket packets — with `secured.type = "oauth-link"`. This proves the browser holds the matching private key. Without this, anyone who knew the victim's public key (which is sent on every WS packet and visible in logs) could mint OAuth tokens against that account.
+
+```js
+// In the browser, after generating/loading the keypair:
+const secured = {
+    type: "oauth-link",
+    id: randomId(),              // any string; not used by the server
+    nonce: randomB64(16),
+    timestamp: Date.now(),
+};
+const sig = await crypto.subtle.sign(
+    { name: "ECDSA", hash: "SHA-256" },
+    privateKey,
+    new TextEncoder().encode(canonicalJSON(secured)),
+);
+const envelope = { secured, signature: b64(sig), pubkey: b64SpkiPubkey };
+const code = btoa(JSON.stringify(envelope));   // standard base64
+
+location.href = `${redirect_uri}?code=${encodeURIComponent(code)}&state=${encodeURIComponent(state)}`;
+```
+
+Server-side checks (`/oauth/token`):
+- Envelope signature verifies against the embedded pubkey.
+- `secured.type === "oauth-link"`.
+- `|now - secured.timestamp| <= 15 minutes` (`OAUTH_CODE_MAX_AGE_MS`).
+- Failure on any of the above returns OAuth `invalid_grant`.
 
 The external page can also (optionally) call `wss://heygoogle.vidgridweb.com:7951/control` directly with the same keypair to perform any account operation (list Google links, list devices, send LLM prompts, etc.) — same identity, no separate login.
 
