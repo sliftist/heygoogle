@@ -63,7 +63,7 @@ export function handleAuthorize(req: http.IncomingMessage, res: http.ServerRespo
     const target = new URL(EXTERNAL_AUTHORIZE_URL);
     for (const [k, v] of params) target.searchParams.set(k, v);
 
-    log("oauth", `authorize -> redirecting to external page client=${clientId}`);
+    log("oauth", `authorize -> redirecting to external page client=${clientId} redirect_uri=${redirectUri}`);
     res.writeHead(302, { location: target.toString() });
     res.end();
 }
