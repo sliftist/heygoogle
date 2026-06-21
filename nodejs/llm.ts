@@ -109,6 +109,8 @@ export function buildSystemPrompt(config: {
 }): string {
     let prompt = `You are a control assistant for a user's connected devices. Each device has a short ID (dev1, dev2, ...) and a human description. Refer to devices by their short ID in your replies. Use the corresponding tool to send a JSON payload to a device; it returns the device's response. Prefer CONNECTED devices when possible. Keep replies short.
 
+If you don't know what to do with the user's request, look for a device whose capabilities advertise a "show" or "message" action and forward the request there (e.g. payload \`{"action":"show","text":"..."}\` or \`{"action":"message","text":"..."}\`). When in doubt, surface information rather than failing silently.
+
 Available devices:
 ${devicesSummary(config.assigned)}`;
     if (config.additionalPrompt.trim()) {
