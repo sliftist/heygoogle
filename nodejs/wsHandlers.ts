@@ -1,5 +1,4 @@
 import {
-    ensureAccount,
     getAdditionalPrompt,
     getCurrentDailyCost,
     isSuperuser,
@@ -18,7 +17,6 @@ import { pubkeyFingerprint } from "./fingerprint";
 import { assignShortIds, buildSystemPrompt } from "./llm";
 import {
     consumePendingPairing,
-    isDevice,
     listAccountsForDevice,
     listDevicesForAccount,
     registerDeviceForAccount,
@@ -68,7 +66,6 @@ export type Secured = {
 export type ConnectionContext = {
     pubkey: string;
     ip: string;
-    isDeviceConnection: boolean;
     sendUnsolicited: (envelope: unknown) => void;
 };
 
@@ -266,18 +263,12 @@ export async function dispatch(config: {
     };
 
     if (t in accountOps) {
-        if (ctx.isDeviceConnection) throw new Error(`Type ${t} requires an account, but this pubkey is registered as a device`);
         touchAccount({ pubkey: ctx.pubkey, ip: ctx.ip });
-        ensureAccount(ctx.pubkey);
         return await accountOps[t]();
     }
 
     if (t in deviceOps) {
-        if (t === "register-device-pairing") {
-            return await deviceOps[t]();
-        }
-        if (!isDevice(ctx.pubkey)) throw new Error(`Type ${t} requires a registered device`);
-        touchDeviceActive(ctx.pubkey);
+        if (t !== "register-device-pairing") touchDeviceActive(ctx.pubkey);
         return await deviceOps[t]();
     }
 

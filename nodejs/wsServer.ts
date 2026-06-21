@@ -12,7 +12,6 @@ import { dispatch, ConnectionContext, WsRegistry } from "./wsHandlers";
 type ConnectionState = {
     ws: WebSocket;
     pubkey: string;
-    isDeviceConnection: boolean;
     ip: string;
     pendingDeviceCalls: Map<string, { resolve: (v: unknown) => void; reject: (e: Error) => void; timer: NodeJS.Timeout }>;
 };
@@ -118,17 +117,15 @@ async function handleMessage(ws: WebSocket, raw: string) {
 
     let state = byWs.get(ws);
     if (!state) {
-        const isDev = isDevice(pubkey);
         state = {
             ws,
             pubkey,
-            isDeviceConnection: isDev,
             ip: (ws as unknown as { _ip?: string })._ip || "",
             pendingDeviceCalls: new Map(),
         };
         addConnection(state);
-        if (isDev) touchDeviceActive(pubkey);
-        log("ws", `connection registered pubkey=${pubkey.slice(0, 16)}... isDevice=${isDev}`);
+        if (isDevice(pubkey)) touchDeviceActive(pubkey);
+        log("ws", `connection registered pubkey=${pubkey.slice(0, 16)}...`);
     } else if (state.pubkey !== pubkey) {
         replyError(ws, id, "pubkey changed mid-connection");
         return;
@@ -137,7 +134,6 @@ async function handleMessage(ws: WebSocket, raw: string) {
     const ctx: ConnectionContext = {
         pubkey: state.pubkey,
         ip: state.ip,
-        isDeviceConnection: state.isDeviceConnection,
         sendUnsolicited: (envelope) => sendEnvelope(ws, envelope),
     };
 

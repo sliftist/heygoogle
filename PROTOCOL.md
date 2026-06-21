@@ -70,7 +70,7 @@ Server responses to client packets are **not** signed (the TLS connection authen
 
 Open a WebSocket. Send signed envelopes. The server identifies your connection by the pubkey on your **first** signed packet. Subsequent packets must use the same pubkey. Multiple WS connections per pubkey are allowed.
 
-A connection's role (account vs device) is decided by table membership: if the pubkey is in the `devices` table, it's a device connection; otherwise it's treated as an account (and an account row is upserted on first packet).
+A given pubkey can be **both** an account and a device — the server doesn't enforce mutual exclusion. Any signed packet that's an account-side type (e.g. `list-devices`, `llm-prompt`) creates/updates the account row if missing; device-side packets (e.g. `list-accounts`, `update-capabilities`) operate on whatever device row already exists for that pubkey, returning empty results if none. The client decides which packets to use; the server enforces per-packet scoping (every query/update is keyed by `ctx.pubkey`).
 
 ## Packet types
 
