@@ -1,0 +1,20 @@
+{
+    "name": "heygoogle",
+    "version": "0.0.1",
+    "private": true,
+    "license": "MIT",
+    "scripts": {
+        "type": "yarn tsc --noEmit",
+        "run-server": "typenode ./nodejs/server.ts",
+        "start": "mkdir -p $HOME/heygoogle-data && setsid -f bash -c 'exec typenode ./nodejs/server.ts >> $HOME/heygoogle-data/server.log 2>&1 < /dev/null' && sleep 0.3 && pgrep -nf '[n]odejs/server.ts' > $HOME/heygoogle-data/server.pid && echo \"started pid $(cat $HOME/heygoogle-data/server.pid)\"",
+        "stop": "(pkill -TERM -f '[n]odejs/server.ts' && echo stopped) || echo \"nothing to stop\"; rm -f $HOME/heygoogle-data/server.pid",
+        "restart": "yarn stop ; yarn start",
+        "tail": "tail -F $HOME/heygoogle-data/server.log",
+        "provision-cloudflare": "typenode ./scripts/provisionCloudflare.ts"
+    },
+    "dependencies": {
+        "@types/node": "^22",
+        "acme-client": "^5.4.0",
+        "typenode": "*"
+    }
+}

@@ -1,0 +1,7 @@
+node_modules
+*.log
+.cache
+*.cache
+**/dist/
+yarn-error.log
+.DS_Store
