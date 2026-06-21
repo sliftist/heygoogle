@@ -11,7 +11,8 @@ that reference preact/MobX/css helpers do not apply here.
 - Don't run shell commands when you need to create or move small code files. Use tool calls. Use tool calls to make files within folders — you don't need to make the folder, just make the file, the folder will be created automatically.
 - If you need to add a dependency, don't just edit `package.json`. Use `yarn add` so you get the latest version, unless the user specifies a version.
 - Use tool calls to read files and directories instead of running `ls`, `dir`, etc.
-- The server is long-running and exposed publicly via Cloudflare. If you change server code, restart it (`yarn restart`) so the live endpoint reflects the change.
+- The server runs as a systemd daemon (`heygoogle.service`, unit at `systemd/heygoogle.service` in repo, installed copy at `/etc/systemd/system/heygoogle.service`). It auto-starts on boot and auto-restarts on crash. After code changes: `systemctl restart heygoogle`. Logs are journal-only: `journalctl -u heygoogle.service -f`.
+- The `yarn start/stop/restart/tail` scripts are for ad-hoc local testing only; in normal ops you use `systemctl restart heygoogle` and `journalctl -u heygoogle -f`. The two paths conflict (only one process can hold port 7951), so stop the daemon before running ad-hoc.
 
 ## Coding styles
 

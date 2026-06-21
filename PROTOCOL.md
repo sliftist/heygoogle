@@ -238,6 +238,10 @@ The value is surfaced to the client through the `daily-cost` packet's `superuser
 - LLM context includes all currently-connected devices + the 3 most-recently-active disconnected devices
 - Model: `google/gemini-3.1-flash-lite` (configurable in `nodejs/config.ts`)
 
+## Privacy
+
+Google fulfillment payload contents (intent params, device commands, etc.) are **not logged** for normal accounts — only the intent type, user id, and request id. For accounts marked with the `superuser` flag, full payloads are logged with a `[SU]` prefix. Set the flag via `scripts/setSuperuser.ts`.
+
 ## Storage layout
 
 All persistent state lives in **one SQLite file**: `~/heygoogle-data/heygoogle.sqlite`. No DB process — the server opens it directly via better-sqlite3. Tables: `accounts`, `account_ips`, `google_links`, `devices`, `pending_pairings`, `oauth_tokens`. Inspect with `sqlite3 ~/heygoogle-data/heygoogle.sqlite ".schema"`.

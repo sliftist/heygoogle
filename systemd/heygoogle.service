@@ -1,0 +1,19 @@
+[Unit]
+Description=heygoogle Smart Home action + signed-packet WS server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/root/heygoogle
+Environment=HOME=/root
+Environment=PATH=/usr/local/bin:/usr/bin:/bin
+ExecStart=/usr/bin/yarn run-server
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=heygoogle
+
+[Install]
+WantedBy=multi-user.target

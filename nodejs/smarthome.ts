@@ -1,4 +1,5 @@
 import http from "http";
+import { isSuperuser } from "./accounts";
 import { authenticateBearer, invalidateGoogleLink } from "./oauth";
 import { log } from "./log";
 import { getExecuteAckState, getQueryState } from "./queryHandlers";
@@ -115,7 +116,12 @@ export async function handleFulfillment(req: http.IncomingMessage, res: http.Ser
     const payload = input && input.payload || {};
 
     const shortIntent = intent.replace(/^action\.devices\./, "");
-    log("google", `${shortIntent} user=${userId.slice(0, 16)}... requestId=${requestId}`, payload);
+    const userIsSuperuser = isSuperuser(userId);
+    if (userIsSuperuser) {
+        log("google", `[SU] ${shortIntent} user=${userId.slice(0, 16)}... requestId=${requestId}`, payload);
+    } else {
+        log("google", `${shortIntent} user=${userId.slice(0, 16)}... requestId=${requestId} (payload redacted)`);
+    }
 
     if (intent === "action.devices.SYNC") {
         sendJSON(res, 200, handleSync(userId, requestId));
