@@ -3,7 +3,8 @@ import {
     LLM_DAILY_COST_CAP_USD,
     LLM_INACTIVE_DEVICES_IN_CONTEXT,
     LLM_MAX_TOOL_ITERATIONS,
-    LLM_MODEL,
+    LLM_MODEL_DEFAULT,
+    LLM_MODEL_SUPERUSER,
     OPENROUTER_KEY_PATH,
 } from "./config";
 import { addToDailyCost, assertDailyCostBelowCap, getCurrentDailyCost, isSuperuser, recordLlmResponse, recordToolCall } from "./accounts";
@@ -146,6 +147,7 @@ ${devicesSummary(config.assigned)}`;
 async function callOpenRouter(config: {
     messages: ChatMessage[];
     tools: ToolDef[];
+    model: string;
 }): Promise<OpenRouterResponse> {
     const key = loadOpenRouterKey();
     const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
@@ -155,7 +157,7 @@ async function callOpenRouter(config: {
             "content-type": "application/json",
         },
         body: JSON.stringify({
-            model: LLM_MODEL,
+            model: config.model,
             messages: config.messages,
             tools: config.tools,
             usage: { include: true },
@@ -195,11 +197,12 @@ export async function runLLMWithDeviceTools(config: {
     let toolCallsUsed = 0;
 
     const su = isSuperuser(config.accountPubkey);
+    const model = su ? LLM_MODEL_SUPERUSER : LLM_MODEL_DEFAULT;
 
     for (let iter = 0; iter < LLM_MAX_TOOL_ITERATIONS; iter++) {
         assertDailyCostBelowCap(config.accountPubkey);
 
-        const response = await callOpenRouter({ messages, tools });
+        const response = await callOpenRouter({ messages, tools, model });
         const cost = response.usage && response.usage.cost || 0;
         totalCostUsd += cost;
         if (cost > 0) addToDailyCost({ pubkey: config.accountPubkey, deltaUsd: cost });
