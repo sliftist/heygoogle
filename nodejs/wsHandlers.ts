@@ -1,5 +1,4 @@
 import {
-    getAdditionalPrompt,
     getCurrentDailyCost,
     isSuperuser,
     listGoogleLinks,
@@ -8,13 +7,11 @@ import {
     listSuToolCalls,
     LLM_DAILY_COST_CAP_USD,
     removeGoogleLink,
-    setAdditionalPrompt,
     touchAccount,
 } from "./accounts";
-import { MAX_ADDITIONAL_PROMPT_LEN, SEND_TO_DEVICE_DEFAULT_TIMEOUT_MS } from "./config";
+import { SEND_TO_DEVICE_DEFAULT_TIMEOUT_MS } from "./config";
 import { db, todayYMD } from "./db";
 import { pubkeyFingerprint } from "./fingerprint";
-import { assignShortIds, buildSystemPrompt } from "./llm";
 import {
     consumePendingPairing,
     listAccountsForDevice,
@@ -149,24 +146,8 @@ export async function dispatch(config: {
                 accountPubkey: ctx.pubkey,
                 prompt,
                 devices: devicesForLLM,
-                additionalPrompt: getAdditionalPrompt(ctx.pubkey),
                 sendToDevice: ({ devicePubkey, payload }) => registry.sendToDevice({ devicePubkey, payload }),
             });
-        },
-        "get-prompts": () => {
-            const devicesForLLM = devicesForLLMContext(ctx.pubkey, registry);
-            const assigned = assignShortIds(devicesForLLM);
-            const additionalPrompt = getAdditionalPrompt(ctx.pubkey);
-            return {
-                systemPrompt: buildSystemPrompt({ assigned, additionalPrompt }),
-                additionalPrompt,
-                maxAdditionalPromptLen: MAX_ADDITIONAL_PROMPT_LEN,
-            };
-        },
-        "set-additional-prompt": () => {
-            if (typeof data.text !== "string") throw new Error("Missing text (must be a string; pass '' to clear)");
-            setAdditionalPrompt({ pubkey: ctx.pubkey, text: data.text });
-            return { ok: true };
         },
         "daily-cost": () => ({
             usd: getCurrentDailyCost(ctx.pubkey),

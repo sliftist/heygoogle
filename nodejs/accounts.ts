@@ -1,4 +1,4 @@
-import { LLM_DAILY_COST_CAP_USD, MAX_ADDITIONAL_PROMPT_LEN, MAX_IPS_PER_ACCOUNT, MAX_SU_GOOGLE_REQUESTS } from "./config";
+import { LLM_DAILY_COST_CAP_USD, MAX_IPS_PER_ACCOUNT, MAX_SU_GOOGLE_REQUESTS } from "./config";
 import { db, todayYMD } from "./db";
 
 export { LLM_DAILY_COST_CAP_USD };
@@ -29,13 +29,9 @@ const stmtListIps = db.prepare(`
 SELECT ip, last_used_at FROM account_ips WHERE pubkey = ? ORDER BY last_used_at DESC LIMIT ?
 `);
 
-const stmtGetAccount = db.prepare(`SELECT pubkey, created_at, daily_cost_usd, daily_cost_date, superuser, additional_prompt FROM accounts WHERE pubkey = ?`);
+const stmtGetAccount = db.prepare(`SELECT pubkey, created_at, daily_cost_usd, daily_cost_date, superuser FROM accounts WHERE pubkey = ?`);
 
 const stmtSetSuperuser = db.prepare(`UPDATE accounts SET superuser = ? WHERE pubkey = ?`);
-
-const stmtSetAdditionalPrompt = db.prepare(`UPDATE accounts SET additional_prompt = ? WHERE pubkey = ?`);
-
-const stmtGetAdditionalPrompt = db.prepare(`SELECT additional_prompt FROM accounts WHERE pubkey = ?`);
 
 const stmtUpdateDailyCost = db.prepare(`UPDATE accounts SET daily_cost_usd = ?, daily_cost_date = ? WHERE pubkey = ?`);
 
@@ -56,7 +52,6 @@ export type AccountRow = {
     daily_cost_usd: number;
     daily_cost_date: string;
     superuser: number;
-    additional_prompt: string;
 };
 
 export function ensureAccount(pubkey: string): void {
@@ -129,20 +124,6 @@ export function setSuperuser(config: { pubkey: string; value: boolean }): { ok: 
 export function isSuperuser(pubkey: string): boolean {
     const acct = getAccount(pubkey);
     return !!(acct && acct.superuser);
-}
-
-export function getAdditionalPrompt(pubkey: string): string {
-    const row = stmtGetAdditionalPrompt.get(pubkey) as { additional_prompt: string } | undefined;
-    return row && row.additional_prompt || "";
-}
-
-export function setAdditionalPrompt(config: { pubkey: string; text: string }): { ok: boolean } {
-    if (config.text.length > MAX_ADDITIONAL_PROMPT_LEN) {
-        throw new Error(`additional prompt exceeds max length of ${MAX_ADDITIONAL_PROMPT_LEN} chars (was ${config.text.length})`);
-    }
-    ensureAccount(config.pubkey);
-    const info = stmtSetAdditionalPrompt.run(config.text, config.pubkey);
-    return { ok: info.changes > 0 };
 }
 
 const stmtInsertSuRequest = db.prepare(`

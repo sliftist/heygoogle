@@ -1,5 +1,5 @@
 import http from "http";
-import { getAdditionalPrompt, isSuperuser, recordGoogleRequest } from "./accounts";
+import { isSuperuser, recordGoogleRequest } from "./accounts";
 import { authenticateBearer, invalidateGoogleLink } from "./oauth";
 import { buildDevicesForLLM, runLLMWithDeviceTools } from "./llm";
 import { log, logErr } from "./log";
@@ -111,7 +111,6 @@ Decide which of the user's connected devices best matches this request, then cal
         accountPubkey: config.accountPubkey,
         prompt,
         devices,
-        additionalPrompt: getAdditionalPrompt(config.accountPubkey),
         sendToDevice: ({ devicePubkey, payload }) => wsRegistry.sendToDevice({ devicePubkey, payload }),
     });
 }

@@ -86,12 +86,12 @@ function shortIdFor(index: number): string {
     return `dev${index + 1}`;
 }
 
-export type DeviceTool = {
+type DeviceTool = {
     shortId: string;
     device: DeviceForLLM;
 };
 
-export function assignShortIds(devices: DeviceForLLM[]): DeviceTool[] {
+function assignShortIds(devices: DeviceForLLM[]): DeviceTool[] {
     return devices.map((device, i) => ({ shortId: shortIdFor(i), device }));
 }
 
@@ -124,11 +124,8 @@ function devicesSummary(assigned: DeviceTool[]): string {
     }).join("\n");
 }
 
-export function buildSystemPrompt(config: {
-    assigned: DeviceTool[];
-    additionalPrompt: string;
-}): string {
-    let prompt = `You are a control assistant for a user's connected devices. Each device has a short ID (dev1, dev2, ...) and a human description. Refer to devices by their short ID in your replies. Use the corresponding tool to send a JSON payload to a device; it returns the device's response. Prefer CONNECTED devices when possible. Keep replies short.
+function buildSystemPrompt(assigned: DeviceTool[]): string {
+    return `You are a control assistant for a user's connected devices. Each device has a short ID (dev1, dev2, ...) and a human description. Refer to devices by their short ID in your replies. Use the corresponding tool to send a JSON payload to a device; it returns the device's response. Prefer CONNECTED devices when possible. Keep replies short.
 
 IMPORTANT CONTEXT: Most prompts you receive arrive via Google Home's Smart Home protocol, which has a fixed vocabulary of intents (OnOff, AppSelector/appSelect, TransportControl, Channel, InputSelector, Volume, Modes, Toggles, Brightness, etc.) that the user's voice gets squeezed into before reaching us. Google Home does NOT understand what our user's actual devices can do — it only knows the generic Smart Home traits we declared to it. So you will frequently see requests like \`appSelect{newApplication: "play_avatar"}\` or \`OnOff{on:true}\` that don't literally make sense for the user's connected devices. Treat these as Google's best-effort encoding of a natural-language wish: infer what the user actually wanted, then map it onto the *real* capabilities advertised by the connected devices (read each device's \`Capabilities\` carefully — that's the source of truth for what each device can actually do, not the Google Home protocol).
 
@@ -137,11 +134,7 @@ For example: \`appSelect{newApplication:"play_avatar"}\` likely means "the user 
 If you don't know what to do with the user's request, look for a device whose capabilities advertise a "show" or "message" action and forward the request there (e.g. payload \`{"action":"show","text":"..."}\` or \`{"action":"message","text":"..."}\`). When in doubt, surface information rather than failing silently.
 
 Available devices:
-${devicesSummary(config.assigned)}`;
-    if (config.additionalPrompt.trim()) {
-        prompt += `\n\nAdditional instructions from the user:\n${config.additionalPrompt}`;
-    }
-    return prompt;
+${devicesSummary(assigned)}`;
 }
 
 async function callOpenRouter(config: {
@@ -175,7 +168,6 @@ export async function runLLMWithDeviceTools(config: {
     accountPubkey: string;
     prompt: string;
     devices: DeviceForLLM[];
-    additionalPrompt: string;
     sendToDevice: (config: { devicePubkey: string; payload: unknown }) => Promise<unknown>;
 }): Promise<{ reply: string; toolCallsUsed: number; costUsd: number; dailyCostUsd: number }> {
     assertDailyCostBelowCap(config.accountPubkey);
@@ -188,7 +180,7 @@ export async function runLLMWithDeviceTools(config: {
     const messages: ChatMessage[] = [
         {
             role: "system",
-            content: buildSystemPrompt({ assigned, additionalPrompt: config.additionalPrompt }),
+            content: buildSystemPrompt(assigned),
         },
         { role: "user", content: config.prompt },
     ];

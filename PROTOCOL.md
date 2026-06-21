@@ -93,8 +93,6 @@ All shapes below describe `secured.type` and `secured.data`. Response goes in `{
 | `whoami` | `{}` | `{ pubkey, superuser, fingerprint }` — your pubkey, your superuser flag, and your word-phrase fingerprint |
 | `list-google-requests` | `{ limit? }` | `{ requests: [{ received_at, intent, body }] }` — **superuser only**. Combined, time-sorted timeline (newest first, capped at `limit`) of both raw Google fulfillment bodies and LLM responses. LLM rows use the synthetic `intent: "LLM_RESPONSE"` with `body = { iter, costUsd, response }`. Errors for non-superusers. |
 | `total-daily-cost` | `{}` | `{ totalUsd, accountsContributing, date }` — **superuser only**. Sum of `daily_cost_usd` across every account whose `daily_cost_date` matches today's UTC date, and the count of contributing accounts. |
-| `get-prompts` | `{}` | `{ systemPrompt, additionalPrompt, maxAdditionalPromptLen }` — the **fully composed system prompt** the LLM would see for the next `llm-prompt` (including current devices + your additional instructions) plus your saved additional prompt string. Read-only for the system part. |
-| `set-additional-prompt` | `{ text }` | `{ ok: true }` — saves an extra instruction block that gets appended to the system prompt on every `llm-prompt` call. Pass `""` to clear. Errors if `text` is over 4096 chars. |
 
 ### From a device
 
