@@ -36,6 +36,28 @@ function devicesForLLMContext(accountPubkey: string, registry: WsRegistry) {
     return buildDevicesForLLM({ accountPubkey, isConnected: registry.isConnected });
 }
 
+function listDevicesShape(accountPubkey: string, registry: WsRegistry) {
+    const devices = listDevicesForAccount(accountPubkey);
+    return {
+        devices: devices.map(d => ({
+            device_pubkey: d.device_pubkey,
+            description: d.description,
+            capabilities: JSON.parse(d.capabilities_json),
+            registered_at: d.registered_at,
+            last_active_at: d.last_active_at,
+            connected: registry.isConnected(d.device_pubkey),
+        })),
+    };
+}
+
+function listGoogleLinksShape(accountPubkey: string) {
+    return { links: listGoogleLinks(accountPubkey) };
+}
+
+function listAccountsShape(devicePubkey: string) {
+    return { accounts: listAccountsForDevice(devicePubkey) };
+}
+
 export type Secured = {
     type: string;
     id: string;
@@ -76,23 +98,12 @@ export async function dispatch(config: {
                 lastDisconnectedAt: stats.lastDisconnectedAt,
             };
         },
-        "list-devices": () => {
-            const devices = listDevicesForAccount(ctx.pubkey);
-            return {
-                devices: devices.map(d => ({
-                    device_pubkey: d.device_pubkey,
-                    description: d.description,
-                    capabilities: JSON.parse(d.capabilities_json),
-                    registered_at: d.registered_at,
-                    last_active_at: d.last_active_at,
-                    connected: registry.isConnected(d.device_pubkey),
-                })),
-            };
-        },
+        "list-devices": () => listDevicesShape(ctx.pubkey, registry),
         "unregister-device": () => {
             const devicePubkey = String(data.device_pubkey || "");
             if (!devicePubkey) throw new Error("Missing device_pubkey");
-            return removeDeviceFromAccount({ accountPubkey: ctx.pubkey, devicePubkey });
+            const result = removeDeviceFromAccount({ accountPubkey: ctx.pubkey, devicePubkey });
+            return { ...result, ...listDevicesShape(ctx.pubkey, registry) };
         },
         "update-device-description": () => {
             const devicePubkey = String(data.device_pubkey || "");
@@ -101,7 +112,7 @@ export async function dispatch(config: {
             if (!description) throw new Error("Missing description");
             const result = updateDeviceDescription({ accountPubkey: ctx.pubkey, devicePubkey, description });
             if (!result.updated) throw new Error("Device not found on this account");
-            return result;
+            return { ...result, ...listDevicesShape(ctx.pubkey, registry) };
         },
         "register-device-confirm": () => {
             const devicePubkey = String(data.device_pubkey || "");
@@ -115,13 +126,14 @@ export async function dispatch(config: {
                 description: pending.description,
                 capabilities: JSON.parse(pending.capabilities_json),
             });
-            return { ok: true };
+            return { ok: true, ...listDevicesShape(ctx.pubkey, registry) };
         },
-        "list-google-links": () => ({ links: listGoogleLinks(ctx.pubkey) }),
+        "list-google-links": () => listGoogleLinksShape(ctx.pubkey),
         "unregister-google-link": () => {
             const googleUserId = String(data.google_user_id || "");
             if (!googleUserId) throw new Error("Missing google_user_id");
-            return removeGoogleLink({ pubkey: ctx.pubkey, googleUserId });
+            const result = removeGoogleLink({ pubkey: ctx.pubkey, googleUserId });
+            return { ...result, ...listGoogleLinksShape(ctx.pubkey) };
         },
         "bind-google-link": () => {
             const googleUserId = String(data.google_user_id || "");
@@ -245,11 +257,12 @@ export async function dispatch(config: {
             setPendingPairing({ devicePubkey: ctx.pubkey, otp, description, capabilities });
             return { ok: true };
         },
-        "list-accounts": () => ({ accounts: listAccountsForDevice(ctx.pubkey) }),
+        "list-accounts": () => listAccountsShape(ctx.pubkey),
         "unregister-account": () => {
             const accountPubkey = String(data.account_pubkey || "");
             if (!accountPubkey) throw new Error("Missing account_pubkey");
-            return removeAccountFromDevice({ devicePubkey: ctx.pubkey, accountPubkey });
+            const result = removeAccountFromDevice({ devicePubkey: ctx.pubkey, accountPubkey });
+            return { ...result, ...listAccountsShape(ctx.pubkey) };
         },
         "update-capabilities": () => {
             if (data.capabilities === undefined) throw new Error("Missing capabilities");
