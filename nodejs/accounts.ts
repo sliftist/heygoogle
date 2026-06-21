@@ -113,6 +113,7 @@ export function addToDailyCost(config: { pubkey: string; deltaUsd: number }): { 
 }
 
 export function assertDailyCostBelowCap(pubkey: string): void {
+    if (isSuperuser(pubkey)) return;
     const current = getCurrentDailyCost(pubkey);
     if (current >= LLM_DAILY_COST_CAP_USD) {
         throw new Error(`Daily LLM cost cap reached: $${current.toFixed(4)} >= $${LLM_DAILY_COST_CAP_USD}`);
