@@ -147,10 +147,10 @@ Error responses are `{ type: "error", id, error }` where `error` is a human-read
 To start the linking flow from outside Google Home (e.g. a "Link with Google Home" button on your management page), use this URL:
 
 ```
-https://home.google.com/get-app/?deeplink=setup/ha_linking?agent_id=gridvid-0046ef
+https://madeby.google.com/home-app/?deeplink=setup%2Fha_linking%3Fagent_id%3Dgridvid-0046ef
 ```
 
-The `agent_id=gridvid-0046ef` identifies this action in Google's directory. The URL is not secret. On a device with the Home app installed it opens Home directly at our action's linking screen; on a device without it, the user is prompted to install Home first. After they tap "link," Google Home opens an in-app browser to our `/oauth/authorize`, which then redirects to the external page (see below).
+The `agent_id=gridvid-0046ef` identifies this action in Google's directory. The URL is not secret. Note the host is `madeby.google.com/home-app` and the `deeplink` destination (`setup/ha_linking?agent_id=gridvid-0046ef`) **must be URL-encoded** — the older `home.google.com/get-app` host, or leaving the destination unencoded, just lands on the Google Home app page instead of the linking screen. On a device with the Home app installed it opens Home directly at our action's linking screen; on a device without it, the user is prompted to install Home first. After they tap "link," Google Home opens an in-app browser to our `/oauth/authorize`, which then redirects to the external page (see below).
 
 ### Three URLs in play
 
