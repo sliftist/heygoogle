@@ -143,13 +143,13 @@ Error responses are `{ type: "error", id, error }` where `error` is a human-read
 
 Three URLs:
 
-- **`GET /oauth/authorize`** — Google opens this. We validate `client_id` + `redirect_uri` (must be on the Google allowlist) then 302-redirect to the **external** authorize page (`https://vidgridweb.com/heygoogle`) with all query params preserved.
+- **`GET /oauth/authorize`** — Google opens this. We validate `client_id` + `redirect_uri` (must be on the Google allowlist) then 302-redirect to the **external** authorize page (`https://vidgridweb.com?page=heygoogle`) with all query params preserved.
 - **`POST /oauth/token`** — Google exchanges `code` here. The code is the user's **base64 SPKI pubkey**; we validate it parses as P-256 and mint an access+refresh token tied to that pubkey + a synthetic `google_user_id`. Refresh-token grant works the standard way.
 - **`POST /smarthome/fulfillment`** — Google calls this for SYNC/QUERY/EXECUTE/DISCONNECT. Bearer token resolves to `{ pubkey, googleUserId }`. DISCONNECT invalidates only the affected `google_user_id`, never the account.
 
 ### External page contract
 
-The external page at `https://vidgridweb.com/heygoogle` receives the query string `?client_id=...&redirect_uri=...&response_type=code&state=...`. It must:
+The external page at `https://vidgridweb.com?page=heygoogle` receives the query string `?client_id=...&redirect_uri=...&response_type=code&state=...`. It must:
 
 1. Generate or load (from IndexedDB) the user's P-256 keypair.
 2. Export the public key as base64 SPKI.

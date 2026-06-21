@@ -27,7 +27,7 @@ export const GOOGLE_REDIRECT_PREFIXES = [
     "https://oauth-redirect-sandbox.googleusercontent.com/r/",
 ];
 
-export const EXTERNAL_AUTHORIZE_URL = "https://vidgridweb.com/heygoogle";
+export const EXTERNAL_AUTHORIZE_URL = "https://vidgridweb.com?page=heygoogle";
 
 export const CORS_ROOT_DOMAIN = ["vidgridweb", "com"];
 
