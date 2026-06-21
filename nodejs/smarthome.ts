@@ -1,5 +1,5 @@
 import http from "http";
-import { authenticateBearer, invalidateUser } from "./oauth";
+import { authenticateBearer, invalidateGoogleLink } from "./oauth";
 import { log } from "./log";
 import { getExecuteAckState, getQueryState } from "./queryHandlers";
 import { Device, loadDevices } from "./storage";
@@ -94,17 +94,18 @@ function handleExecute(requestId: string, payload: ExecutePayload) {
     };
 }
 
-function handleDisconnect(requestId: string, userId: string) {
-    invalidateUser(userId);
+function handleDisconnect(requestId: string, googleUserId: string) {
+    invalidateGoogleLink(googleUserId);
     return { requestId, payload: {} };
 }
 
 export async function handleFulfillment(req: http.IncomingMessage, res: http.ServerResponse) {
-    const userId = authenticateBearer(req);
-    if (!userId) {
+    const identity = authenticateBearer(req);
+    if (!identity) {
         sendJSON(res, 401, { error: "unauthorized" });
         return;
     }
+    const userId = identity.pubkey;
     const raw = await readBody(req);
     const body = JSON.parse(raw) as FulfillmentRequest;
 
@@ -114,7 +115,7 @@ export async function handleFulfillment(req: http.IncomingMessage, res: http.Ser
     const payload = input && input.payload || {};
 
     const shortIntent = intent.replace(/^action\.devices\./, "");
-    log("google", `${shortIntent} user=${userId} requestId=${requestId}`, payload);
+    log("google", `${shortIntent} user=${userId.slice(0, 16)}... requestId=${requestId}`, payload);
 
     if (intent === "action.devices.SYNC") {
         sendJSON(res, 200, handleSync(userId, requestId));
@@ -129,10 +130,10 @@ export async function handleFulfillment(req: http.IncomingMessage, res: http.Ser
         return;
     }
     if (intent === "action.devices.DISCONNECT") {
-        sendJSON(res, 200, handleDisconnect(requestId, userId));
+        sendJSON(res, 200, handleDisconnect(requestId, identity.googleUserId));
         return;
     }
 
-    log("google", `unknown intent=${intent} user=${userId}`);
+    log("google", `unknown intent=${intent} user=${userId.slice(0, 16)}...`);
     sendJSON(res, 400, { error: "unknown_intent", intent });
 }

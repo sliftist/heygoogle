@@ -3,11 +3,28 @@ import crypto from "crypto";
 import { URL, URLSearchParams } from "url";
 import {
     ACCESS_TOKEN_TTL_MS,
-    AUTH_CODE_TTL_MS,
+    EXTERNAL_AUTHORIZE_URL,
     GOOGLE_REDIRECT_PREFIXES,
 } from "./config";
+import { addGoogleLink, ensureAccount, removeGoogleLink } from "./accounts";
+import { db } from "./db";
 import { log } from "./log";
-import { loadClientSecret, loadTokens, saveTokens } from "./storage";
+import { validateSpkiPubkey } from "./crypto";
+import { loadClientSecret } from "./storage";
+
+const stmtInsertToken = db.prepare(`
+INSERT INTO oauth_tokens (token, kind, account_pubkey, google_user_id, expires_at) VALUES (?, ?, ?, ?, ?)
+`);
+
+const stmtGetAccessToken = db.prepare(`
+SELECT account_pubkey, google_user_id, expires_at FROM oauth_tokens WHERE token = ? AND kind = 'access'
+`);
+
+const stmtGetRefreshToken = db.prepare(`
+SELECT account_pubkey, google_user_id FROM oauth_tokens WHERE token = ? AND kind = 'refresh'
+`);
+
+const stmtDeleteTokensForGoogleUser = db.prepare(`DELETE FROM oauth_tokens WHERE google_user_id = ?`);
 
 function isAllowedRedirect(redirectUri: string): boolean {
     return GOOGLE_REDIRECT_PREFIXES.some(prefix => redirectUri.startsWith(prefix));
@@ -27,9 +44,7 @@ export function handleAuthorize(req: http.IncomingMessage, res: http.ServerRespo
     const params = url.searchParams;
     const clientId = params.get("client_id") || "";
     const redirectUri = params.get("redirect_uri") || "";
-    const state = params.get("state") || "";
     const responseType = params.get("response_type") || "";
-    const scope = params.get("scope") || "";
 
     const expectedClient = loadClientSecret();
     if (clientId !== expectedClient.clientId) {
@@ -45,24 +60,11 @@ export function handleAuthorize(req: http.IncomingMessage, res: http.ServerRespo
         return;
     }
 
-    const tokens = loadTokens();
-    const code = crypto.randomBytes(24).toString("hex");
-    const userId = `user-${crypto.randomBytes(8).toString("hex")}`;
-    tokens.authCodes[code] = {
-        userId,
-        clientId,
-        redirectUri,
-        expiresAt: Date.now() + AUTH_CODE_TTL_MS,
-    };
-    saveTokens(tokens);
+    const target = new URL(EXTERNAL_AUTHORIZE_URL);
+    for (const [k, v] of params) target.searchParams.set(k, v);
 
-    log("oauth", `authorize code issued user=${userId} client=${clientId} scope=${scope} state=${state}`);
-
-    const redirect = new URL(redirectUri);
-    redirect.searchParams.set("code", code);
-    if (state) redirect.searchParams.set("state", state);
-
-    res.writeHead(302, { location: redirect.toString() });
+    log("oauth", `authorize -> redirecting to external page client=${clientId}`);
+    res.writeHead(302, { location: target.toString() });
     res.end();
 }
 
@@ -77,12 +79,24 @@ function readBody(req: http.IncomingMessage): Promise<string> {
 
 function parseFormOrJson(contentType: string, body: string): Record<string, string> {
     if (contentType.includes("application/json")) {
-        const parsed = JSON.parse(body) as Record<string, string>;
-        return parsed;
+        return JSON.parse(body) as Record<string, string>;
     }
     const out: Record<string, string> = {};
     for (const [k, v] of new URLSearchParams(body)) out[k] = v;
     return out;
+}
+
+function mintAccessToken(config: { pubkey: string; googleUserId: string }): { token: string; expiresAt: number } {
+    const token = crypto.randomBytes(32).toString("hex");
+    const expiresAt = Date.now() + ACCESS_TOKEN_TTL_MS;
+    stmtInsertToken.run(token, "access", config.pubkey, config.googleUserId, expiresAt);
+    return { token, expiresAt };
+}
+
+function mintRefreshToken(config: { pubkey: string; googleUserId: string }): string {
+    const token = crypto.randomBytes(32).toString("hex");
+    stmtInsertToken.run(token, "refresh", config.pubkey, config.googleUserId, null);
+    return token;
 }
 
 export async function handleToken(req: http.IncomingMessage, res: http.ServerResponse) {
@@ -91,9 +105,6 @@ export async function handleToken(req: http.IncomingMessage, res: http.ServerRes
     const form = parseFormOrJson(contentType, body);
 
     const expectedClient = loadClientSecret();
-    const givenClientId = form.client_id || (req.headers.authorization || "").replace(/^Basic\s+/i, "");
-    const grantType = form.grant_type || "";
-
     if (form.client_id && form.client_id !== expectedClient.clientId) {
         sendJSON(res, 400, { error: "invalid_client" });
         return;
@@ -103,37 +114,30 @@ export async function handleToken(req: http.IncomingMessage, res: http.ServerRes
         return;
     }
 
-    const tokens = loadTokens();
+    const grantType = form.grant_type || "";
 
     if (grantType === "authorization_code") {
-        const code = form.code || "";
-        const record = tokens.authCodes[code];
-        if (!record) {
+        const pubkeyB64 = form.code || "";
+        try {
+            await validateSpkiPubkey(pubkeyB64);
+        } catch (err) {
+            log("oauth", `token rejected: code is not a valid SPKI pubkey: ${err && (err as Error).message || err}`);
             sendJSON(res, 400, { error: "invalid_grant" });
             return;
         }
-        if (record.expiresAt < Date.now()) {
-            delete tokens.authCodes[code];
-            saveTokens(tokens);
-            sendJSON(res, 400, { error: "invalid_grant" });
-            return;
-        }
-        delete tokens.authCodes[code];
 
-        const accessToken = crypto.randomBytes(32).toString("hex");
-        const refreshToken = crypto.randomBytes(32).toString("hex");
-        tokens.accessTokens[accessToken] = {
-            userId: record.userId,
-            expiresAt: Date.now() + ACCESS_TOKEN_TTL_MS,
-        };
-        tokens.refreshTokens[refreshToken] = { userId: record.userId };
-        saveTokens(tokens);
+        const googleUserId = `glink-${crypto.randomBytes(8).toString("hex")}`;
+        ensureAccount(pubkeyB64);
+        addGoogleLink({ googleUserId, pubkey: pubkeyB64 });
 
-        log("oauth", `token (code) issued user=${record.userId}`);
+        const access = mintAccessToken({ pubkey: pubkeyB64, googleUserId });
+        const refresh = mintRefreshToken({ pubkey: pubkeyB64, googleUserId });
+
+        log("oauth", `token (code) issued account=${pubkeyB64.slice(0, 16)}... googleUserId=${googleUserId}`);
         sendJSON(res, 200, {
             token_type: "Bearer",
-            access_token: accessToken,
-            refresh_token: refreshToken,
+            access_token: access.token,
+            refresh_token: refresh,
             expires_in: Math.floor(ACCESS_TOKEN_TTL_MS / 1000),
         });
         return;
@@ -141,64 +145,46 @@ export async function handleToken(req: http.IncomingMessage, res: http.ServerRes
 
     if (grantType === "refresh_token") {
         const refreshToken = form.refresh_token || "";
-        const record = tokens.refreshTokens[refreshToken];
+        const record = stmtGetRefreshToken.get(refreshToken) as { account_pubkey: string; google_user_id: string } | undefined;
         if (!record) {
             sendJSON(res, 400, { error: "invalid_grant" });
             return;
         }
-        const accessToken = crypto.randomBytes(32).toString("hex");
-        tokens.accessTokens[accessToken] = {
-            userId: record.userId,
-            expiresAt: Date.now() + ACCESS_TOKEN_TTL_MS,
-        };
-        saveTokens(tokens);
-
-        log("oauth", `token (refresh) issued user=${record.userId}`);
+        const access = mintAccessToken({ pubkey: record.account_pubkey, googleUserId: record.google_user_id });
+        log("oauth", `token (refresh) issued account=${record.account_pubkey.slice(0, 16)}... googleUserId=${record.google_user_id}`);
         sendJSON(res, 200, {
             token_type: "Bearer",
-            access_token: accessToken,
+            access_token: access.token,
             expires_in: Math.floor(ACCESS_TOKEN_TTL_MS / 1000),
         });
         return;
     }
 
-    log("oauth", `unsupported grant_type=${grantType} client=${givenClientId}`);
+    log("oauth", `unsupported grant_type=${grantType}`);
     sendJSON(res, 400, { error: "unsupported_grant_type" });
 }
 
-export function authenticateBearer(req: http.IncomingMessage): string | undefined {
+export type BearerIdentity = {
+    pubkey: string;
+    googleUserId: string;
+};
+
+export function authenticateBearer(req: http.IncomingMessage): BearerIdentity | undefined {
     const header = req.headers.authorization || "";
     const match = /^Bearer\s+(.+)$/i.exec(header);
     if (!match) return undefined;
     const token = match[1];
-    const tokens = loadTokens();
-    const record = tokens.accessTokens[token];
+    const record = stmtGetAccessToken.get(token) as { account_pubkey: string; google_user_id: string; expires_at: number } | undefined;
     if (!record) return undefined;
-    if (record.expiresAt < Date.now()) return undefined;
-    return record.userId;
+    if (record.expires_at && record.expires_at < Date.now()) return undefined;
+    return { pubkey: record.account_pubkey, googleUserId: record.google_user_id };
 }
 
-export function invalidateUser(userId: string) {
-    const tokens = loadTokens();
-    let removed = 0;
-    for (const [token, rec] of Object.entries(tokens.accessTokens)) {
-        if (rec.userId === userId) {
-            delete tokens.accessTokens[token];
-            removed++;
-        }
+export function invalidateGoogleLink(googleUserId: string): void {
+    stmtDeleteTokensForGoogleUser.run(googleUserId);
+    const pubkeyRow = db.prepare(`SELECT account_pubkey FROM google_links WHERE google_user_id = ?`).get(googleUserId) as { account_pubkey: string } | undefined;
+    if (pubkeyRow) {
+        removeGoogleLink({ pubkey: pubkeyRow.account_pubkey, googleUserId });
     }
-    for (const [token, rec] of Object.entries(tokens.refreshTokens)) {
-        if (rec.userId === userId) {
-            delete tokens.refreshTokens[token];
-            removed++;
-        }
-    }
-    for (const [code, rec] of Object.entries(tokens.authCodes)) {
-        if (rec.userId === userId) {
-            delete tokens.authCodes[code];
-            removed++;
-        }
-    }
-    saveTokens(tokens);
-    log("oauth", `invalidated user=${userId} (${removed} tokens removed)`);
+    log("oauth", `invalidated googleUserId=${googleUserId}`);
 }

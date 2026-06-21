@@ -4,9 +4,11 @@ import fs from "fs";
 import { URL } from "url";
 import { PORT, PUBLIC_HOST, PUBLIC_ORIGIN, TLS_CERT_PATH, TLS_KEY_PATH } from "./config";
 import { log, logErr } from "./log";
+import { applyCors, handlePreflight } from "./cors";
 import { handleAuthorize, handleToken } from "./oauth";
 import { handleFulfillment } from "./smarthome";
 import { loadClientSecret } from "./storage";
+import { attachWebSocketServer } from "./wsServer";
 
 function sendText(res: http.ServerResponse, status: number, body: string) {
     res.writeHead(status, { "content-type": "text/plain; charset=utf-8" });
@@ -14,6 +16,9 @@ function sendText(res: http.ServerResponse, status: number, body: string) {
 }
 
 async function route(req: http.IncomingMessage, res: http.ServerResponse) {
+    applyCors(req, res);
+    if (handlePreflight(req, res)) return;
+
     const url = new URL(req.url || "/", `https://${PUBLIC_HOST}`);
     const method = (req.method || "GET").toUpperCase();
     const pathname = url.pathname;
@@ -61,6 +66,8 @@ function main() {
             });
         },
     );
+
+    attachWebSocketServer(server);
 
     server.listen(PORT, "0.0.0.0", () => {
         log("boot", `listening on https://0.0.0.0:${PORT} (public: ${PUBLIC_ORIGIN})`);

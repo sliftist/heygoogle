@@ -1,0 +1,110 @@
+import { MAX_IPS_PER_ACCOUNT, LLM_DAILY_COST_CAP_USD } from "./config";
+import { db, todayYMD } from "./db";
+
+const stmtUpsertAccount = db.prepare(`
+INSERT INTO accounts (pubkey, created_at) VALUES (?, ?)
+ON CONFLICT(pubkey) DO NOTHING
+`);
+
+const stmtUpsertIp = db.prepare(`
+INSERT INTO account_ips (pubkey, ip, last_used_at) VALUES (?, ?, ?)
+ON CONFLICT(pubkey, ip) DO UPDATE SET last_used_at = excluded.last_used_at
+`);
+
+const stmtCountIps = db.prepare(`SELECT COUNT(*) AS n FROM account_ips WHERE pubkey = ?`);
+
+const stmtDeleteOldestIps = db.prepare(`
+DELETE FROM account_ips
+WHERE pubkey = ? AND (pubkey, last_used_at) IN (
+    SELECT pubkey, last_used_at FROM account_ips
+    WHERE pubkey = ?
+    ORDER BY last_used_at ASC
+    LIMIT ?
+)
+`);
+
+const stmtListIps = db.prepare(`
+SELECT ip, last_used_at FROM account_ips WHERE pubkey = ? ORDER BY last_used_at DESC LIMIT ?
+`);
+
+const stmtGetAccount = db.prepare(`SELECT pubkey, created_at, daily_cost_usd, daily_cost_date FROM accounts WHERE pubkey = ?`);
+
+const stmtUpdateDailyCost = db.prepare(`UPDATE accounts SET daily_cost_usd = ?, daily_cost_date = ? WHERE pubkey = ?`);
+
+const stmtInsertGoogleLink = db.prepare(`
+INSERT INTO google_links (google_user_id, account_pubkey, linked_at) VALUES (?, ?, ?)
+ON CONFLICT(google_user_id) DO UPDATE SET account_pubkey = excluded.account_pubkey, linked_at = excluded.linked_at
+`);
+
+const stmtListGoogleLinks = db.prepare(`SELECT google_user_id, linked_at FROM google_links WHERE account_pubkey = ? ORDER BY linked_at DESC`);
+
+const stmtDeleteGoogleLink = db.prepare(`DELETE FROM google_links WHERE account_pubkey = ? AND google_user_id = ?`);
+
+const stmtDeleteOauthTokensForGoogleLink = db.prepare(`DELETE FROM oauth_tokens WHERE google_user_id = ?`);
+
+export type AccountRow = {
+    pubkey: string;
+    created_at: number;
+    daily_cost_usd: number;
+    daily_cost_date: string;
+};
+
+export function ensureAccount(pubkey: string): void {
+    stmtUpsertAccount.run(pubkey, Date.now());
+}
+
+export function touchAccount(config: { pubkey: string; ip: string }): void {
+    ensureAccount(config.pubkey);
+    stmtUpsertIp.run(config.pubkey, config.ip, Date.now());
+    const row = stmtCountIps.get(config.pubkey) as { n: number };
+    if (row.n > MAX_IPS_PER_ACCOUNT) {
+        const excess = row.n - MAX_IPS_PER_ACCOUNT;
+        stmtDeleteOldestIps.run(config.pubkey, config.pubkey, excess);
+    }
+}
+
+export function getAccount(pubkey: string): AccountRow | undefined {
+    return stmtGetAccount.get(pubkey) as AccountRow | undefined;
+}
+
+export function listAccountIps(pubkey: string, limit = MAX_IPS_PER_ACCOUNT): { ip: string; last_used_at: number }[] {
+    return stmtListIps.all(pubkey, limit) as { ip: string; last_used_at: number }[];
+}
+
+export function addGoogleLink(config: { googleUserId: string; pubkey: string }): void {
+    stmtInsertGoogleLink.run(config.googleUserId, config.pubkey, Date.now());
+}
+
+export function listGoogleLinks(pubkey: string): { google_user_id: string; linked_at: number }[] {
+    return stmtListGoogleLinks.all(pubkey) as { google_user_id: string; linked_at: number }[];
+}
+
+export function removeGoogleLink(config: { pubkey: string; googleUserId: string }): { removed: boolean } {
+    const info = stmtDeleteGoogleLink.run(config.pubkey, config.googleUserId);
+    stmtDeleteOauthTokensForGoogleLink.run(config.googleUserId);
+    return { removed: info.changes > 0 };
+}
+
+export function getCurrentDailyCost(pubkey: string): number {
+    const acct = getAccount(pubkey);
+    if (!acct) return 0;
+    const today = todayYMD();
+    if (acct.daily_cost_date !== today) return 0;
+    return acct.daily_cost_usd;
+}
+
+export function addToDailyCost(config: { pubkey: string; deltaUsd: number }): { newTotal: number } {
+    ensureAccount(config.pubkey);
+    const today = todayYMD();
+    const current = getCurrentDailyCost(config.pubkey);
+    const newTotal = current + config.deltaUsd;
+    stmtUpdateDailyCost.run(newTotal, today, config.pubkey);
+    return { newTotal };
+}
+
+export function assertDailyCostBelowCap(pubkey: string): void {
+    const current = getCurrentDailyCost(pubkey);
+    if (current >= LLM_DAILY_COST_CAP_USD) {
+        throw new Error(`Daily LLM cost cap reached: $${current.toFixed(4)} >= $${LLM_DAILY_COST_CAP_USD}`);
+    }
+}
