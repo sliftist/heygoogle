@@ -1,5 +1,5 @@
 import http from "http";
-import { isSuperuser } from "./accounts";
+import { isSuperuser, recordGoogleRequest } from "./accounts";
 import { authenticateBearer, invalidateGoogleLink } from "./oauth";
 import { log } from "./log";
 import { getExecuteAckState, getQueryState } from "./queryHandlers";
@@ -119,6 +119,7 @@ export async function handleFulfillment(req: http.IncomingMessage, res: http.Ser
     const userIsSuperuser = isSuperuser(userId);
     if (userIsSuperuser) {
         log("google", `[SU] ${shortIntent} user=${userId.slice(0, 16)}... requestId=${requestId}`, payload);
+        recordGoogleRequest({ accountPubkey: userId, intent, rawBody: raw });
     } else {
         log("google", `${shortIntent} user=${userId.slice(0, 16)}... requestId=${requestId} (payload redacted)`);
     }

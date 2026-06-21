@@ -91,6 +91,8 @@ All shapes below describe `secured.type` and `secured.data`. Response goes in `{
 | `send-to-device` | `{ device_pubkey, payload, timeoutMs? }` | `{ response }` — fails if device isn't connected to this server |
 | `llm-prompt` | `{ prompt }` | `{ reply, toolCallsUsed, costUsd, dailyCostUsd }` — server invokes LLM with one tool per active + top-3-inactive devices, named `dev1`, `dev2`, ... per call (so the model can refer to them in its reply). Chains up to 10 tool calls, enforces $0.15/day cap |
 | `daily-cost` | `{}` | `{ usd, capUsd, date, superuser }` — `usd` is today's spend, `capUsd` is the per-day cap, `date` is today's UTC YMD, `superuser` is the account flag |
+| `whoami` | `{}` | `{ pubkey, superuser, fingerprint }` — your pubkey, your superuser flag, and your word-phrase fingerprint |
+| `list-google-requests` | `{ limit? }` | `{ requests: [{ received_at, intent, body }] }` — **superuser only**. Last N (default 100, max 100) raw Google fulfillment requests for this account, newest first. Errors for non-superusers. |
 
 ### From a device
 
@@ -258,7 +260,7 @@ The flag is surfaced to the client through the `daily-cost` packet's `superuser`
 
 ## Privacy
 
-Google fulfillment payload contents (intent params, device commands, etc.) are **not logged** for normal accounts — only the intent type, user id, and request id. For accounts marked with the `superuser` flag, full payloads are logged with a `[SU]` prefix. Set the flag via `scripts/setSuperuser.ts`.
+Google fulfillment payload contents (intent params, device commands, etc.) are **not logged** for normal accounts — only the intent type, user id, and request id. For accounts marked with the `superuser` flag, full payloads are logged to the journal with a `[SU]` prefix, and the last 100 raw Google requests (per superuser account) are persisted to SQLite (`superuser_request_log` table). Superusers can fetch these via the `list-google-requests` WS packet. Set the flag via `scripts/setSuperuser.ts`.
 
 ## Storage layout
 

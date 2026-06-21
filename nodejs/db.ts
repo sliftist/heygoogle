@@ -62,6 +62,15 @@ CREATE TABLE IF NOT EXISTS oauth_tokens (
 );
 CREATE INDEX IF NOT EXISTS idx_oauth_tokens_account ON oauth_tokens(account_pubkey);
 CREATE INDEX IF NOT EXISTS idx_oauth_tokens_google ON oauth_tokens(google_user_id);
+
+CREATE TABLE IF NOT EXISTS superuser_request_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    account_pubkey TEXT NOT NULL,
+    received_at INTEGER NOT NULL,
+    intent TEXT NOT NULL,
+    raw_body TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_su_log_account ON superuser_request_log(account_pubkey, id DESC);
 `);
 
 const accountCols = db.pragma("table_info(accounts)") as { name: string }[];

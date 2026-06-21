@@ -4,12 +4,14 @@ import {
     getCurrentDailyCost,
     isSuperuser,
     listGoogleLinks,
+    listSuGoogleRequests,
     LLM_DAILY_COST_CAP_USD,
     removeGoogleLink,
     touchAccount,
 } from "./accounts";
 import { LLM_INACTIVE_DEVICES_IN_CONTEXT, SEND_TO_DEVICE_DEFAULT_TIMEOUT_MS } from "./config";
 import { todayYMD } from "./db";
+import { pubkeyFingerprint } from "./fingerprint";
 import {
     consumePendingPairing,
     isDevice,
@@ -155,6 +157,23 @@ export async function dispatch(config: {
             date: todayYMD(),
             superuser: isSuperuser(ctx.pubkey),
         }),
+        "whoami": () => ({
+            pubkey: ctx.pubkey,
+            superuser: isSuperuser(ctx.pubkey),
+            fingerprint: pubkeyFingerprint(ctx.pubkey),
+        }),
+        "list-google-requests": () => {
+            if (!isSuperuser(ctx.pubkey)) throw new Error("This packet requires superuser");
+            const limit = typeof data.limit === "number" ? Math.min(Math.max(data.limit, 1), 100) : 100;
+            const rows = listSuGoogleRequests(ctx.pubkey, limit);
+            return {
+                requests: rows.map(r => {
+                    let body: unknown;
+                    try { body = JSON.parse(r.raw_body); } catch { body = r.raw_body; }
+                    return { received_at: r.received_at, intent: r.intent, body };
+                }),
+            };
+        },
     };
 
     const deviceOps: Record<string, () => Promise<unknown> | unknown> = {

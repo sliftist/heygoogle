@@ -35,6 +35,8 @@ export const ENVELOPE_TIMESTAMP_WINDOW_MS = 60 * 1000;
 
 export const MAX_IPS_PER_ACCOUNT = 100;
 
+export const MAX_SU_GOOGLE_REQUESTS = 100;
+
 export const PENDING_PAIRING_TTL_MS = 10 * 60 * 1000;
 
 export const SEND_TO_DEVICE_DEFAULT_TIMEOUT_MS = 10 * 1000;

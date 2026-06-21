@@ -1,4 +1,4 @@
-import { LLM_DAILY_COST_CAP_USD, MAX_IPS_PER_ACCOUNT } from "./config";
+import { LLM_DAILY_COST_CAP_USD, MAX_IPS_PER_ACCOUNT, MAX_SU_GOOGLE_REQUESTS } from "./config";
 import { db, todayYMD } from "./db";
 
 export { LLM_DAILY_COST_CAP_USD };
@@ -123,4 +123,40 @@ export function setSuperuser(config: { pubkey: string; value: boolean }): { ok: 
 export function isSuperuser(pubkey: string): boolean {
     const acct = getAccount(pubkey);
     return !!(acct && acct.superuser);
+}
+
+const stmtInsertSuRequest = db.prepare(`
+INSERT INTO superuser_request_log (account_pubkey, received_at, intent, raw_body) VALUES (?, ?, ?, ?)
+`);
+
+const stmtTrimSuRequests = db.prepare(`
+DELETE FROM superuser_request_log
+WHERE account_pubkey = ? AND id NOT IN (
+    SELECT id FROM superuser_request_log
+    WHERE account_pubkey = ?
+    ORDER BY id DESC
+    LIMIT ?
+)
+`);
+
+const stmtListSuRequests = db.prepare(`
+SELECT received_at, intent, raw_body FROM superuser_request_log
+WHERE account_pubkey = ?
+ORDER BY id DESC
+LIMIT ?
+`);
+
+export type SuRequestRow = {
+    received_at: number;
+    intent: string;
+    raw_body: string;
+};
+
+export function recordGoogleRequest(config: { accountPubkey: string; intent: string; rawBody: string }): void {
+    stmtInsertSuRequest.run(config.accountPubkey, Date.now(), config.intent, config.rawBody);
+    stmtTrimSuRequests.run(config.accountPubkey, config.accountPubkey, MAX_SU_GOOGLE_REQUESTS);
+}
+
+export function listSuGoogleRequests(accountPubkey: string, limit = MAX_SU_GOOGLE_REQUESTS): SuRequestRow[] {
+    return stmtListSuRequests.all(accountPubkey, limit) as SuRequestRow[];
 }
