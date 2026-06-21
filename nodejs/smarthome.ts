@@ -118,7 +118,7 @@ export async function handleFulfillment(req: http.IncomingMessage, res: http.Ser
     const shortIntent = intent.replace(/^action\.devices\./, "");
     const userIsSuperuser = isSuperuser(userId);
     if (userIsSuperuser) {
-        log("google", `[SU] ${shortIntent} user=${userId.slice(0, 16)}... requestId=${requestId}`, payload);
+        log("google", `[SU] ${shortIntent} user=${userId.slice(0, 16)}... requestId=${requestId}`, body);
         recordGoogleRequest({ accountPubkey: userId, intent, rawBody: raw });
     } else {
         log("google", `${shortIntent} user=${userId.slice(0, 16)}... requestId=${requestId} (payload redacted)`);

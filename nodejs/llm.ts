@@ -5,7 +5,7 @@ import {
     LLM_MODEL,
     OPENROUTER_KEY_PATH,
 } from "./config";
-import { addToDailyCost, assertDailyCostBelowCap, getCurrentDailyCost } from "./accounts";
+import { addToDailyCost, assertDailyCostBelowCap, getCurrentDailyCost, isSuperuser } from "./accounts";
 import { log } from "./log";
 
 type ToolDef = {
@@ -170,6 +170,8 @@ export async function runLLMWithDeviceTools(config: {
     let totalCostUsd = 0;
     let toolCallsUsed = 0;
 
+    const su = isSuperuser(config.accountPubkey);
+
     for (let iter = 0; iter < LLM_MAX_TOOL_ITERATIONS; iter++) {
         assertDailyCostBelowCap(config.accountPubkey);
 
@@ -177,6 +179,10 @@ export async function runLLMWithDeviceTools(config: {
         const cost = response.usage && response.usage.cost || 0;
         totalCostUsd += cost;
         if (cost > 0) addToDailyCost({ pubkey: config.accountPubkey, deltaUsd: cost });
+
+        if (su) {
+            log("llm", `[SU] response account=${config.accountPubkey.slice(0, 16)}... iter=${iter} cost=$${cost}`, response);
+        }
 
         const choice = response.choices[0];
         const msg = choice.message;
