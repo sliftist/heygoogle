@@ -234,9 +234,16 @@ Accounts have a `superuser` boolean column. There is no API to grant it remotely
 ```
 typenode scripts/setSuperuser.ts grant <base64-spki-pubkey>
 typenode scripts/setSuperuser.ts revoke <base64-spki-pubkey>
+
+# Or by word-prefix fingerprint (matches accounts whose
+# SHA-256-derived word phrase starts with the given words):
+typenode scripts/setSuperuser.ts grant the great king
+typenode scripts/setSuperuser.ts revoke mountain kind surface
 ```
 
-The value is surfaced to the client through the `daily-cost` packet's `superuser` field. The server does not currently enforce any superuser-only behavior — it's a marker for future privileged operations.
+The word-phrase fingerprint is the SHA-256 of the SPKI pubkey rendered as a sequence of words via a fixed 1024-word table (10 bits per word). It's not reversible — purely for human comparison and short CLI handles. Prefix must uniquely identify one account; the script errors otherwise.
+
+The flag is surfaced to the client through the `daily-cost` packet's `superuser` field, and gates whether Google fulfillment payloads are logged (see Privacy section). The server does not currently enforce any other superuser-only behavior.
 
 ## Limits & caps
 
