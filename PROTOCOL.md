@@ -89,7 +89,7 @@ All shapes below describe `secured.type` and `secured.data`. Response goes in `{
 | `bind-google-link` | `{ google_user_id }` | `{ ok: true }` — manually associate an existing google_user_id with this account |
 | `send-to-device` | `{ device_pubkey, payload, timeoutMs? }` | `{ response }` — fails if device isn't connected to this server |
 | `llm-prompt` | `{ prompt }` | `{ reply, toolCallsUsed, costUsd, dailyCostUsd }` — server invokes LLM with one tool per active + top-3-inactive devices, chains up to 10 tool calls, enforces $0.15/day cap |
-| `daily-cost` | `{}` | `{ usd }` |
+| `daily-cost` | `{}` | `{ usd, capUsd, date, superuser }` — `usd` is today's spend, `capUsd` is the per-day cap, `date` is today's UTC YMD, `superuser` is the account flag |
 
 ### From a device
 
@@ -215,6 +215,17 @@ await call("llm-prompt", { prompt: "play Avatar on the TV" });
 ```
 
 For Google Home linking, also implement the external authorize page contract above.
+
+## Superuser flag
+
+Accounts have a `superuser` boolean column. There is no API to grant it remotely — it's set only via a CLI script on the server:
+
+```
+typenode scripts/setSuperuser.ts grant <base64-spki-pubkey>
+typenode scripts/setSuperuser.ts revoke <base64-spki-pubkey>
+```
+
+The value is surfaced to the client through the `daily-cost` packet's `superuser` field. The server does not currently enforce any superuser-only behavior — it's a marker for future privileged operations.
 
 ## Limits & caps
 

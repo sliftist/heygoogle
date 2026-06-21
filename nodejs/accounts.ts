@@ -1,5 +1,7 @@
-import { MAX_IPS_PER_ACCOUNT, LLM_DAILY_COST_CAP_USD } from "./config";
+import { LLM_DAILY_COST_CAP_USD, MAX_IPS_PER_ACCOUNT } from "./config";
 import { db, todayYMD } from "./db";
+
+export { LLM_DAILY_COST_CAP_USD };
 
 const stmtUpsertAccount = db.prepare(`
 INSERT INTO accounts (pubkey, created_at) VALUES (?, ?)
@@ -27,7 +29,9 @@ const stmtListIps = db.prepare(`
 SELECT ip, last_used_at FROM account_ips WHERE pubkey = ? ORDER BY last_used_at DESC LIMIT ?
 `);
 
-const stmtGetAccount = db.prepare(`SELECT pubkey, created_at, daily_cost_usd, daily_cost_date FROM accounts WHERE pubkey = ?`);
+const stmtGetAccount = db.prepare(`SELECT pubkey, created_at, daily_cost_usd, daily_cost_date, superuser FROM accounts WHERE pubkey = ?`);
+
+const stmtSetSuperuser = db.prepare(`UPDATE accounts SET superuser = ? WHERE pubkey = ?`);
 
 const stmtUpdateDailyCost = db.prepare(`UPDATE accounts SET daily_cost_usd = ?, daily_cost_date = ? WHERE pubkey = ?`);
 
@@ -47,6 +51,7 @@ export type AccountRow = {
     created_at: number;
     daily_cost_usd: number;
     daily_cost_date: string;
+    superuser: number;
 };
 
 export function ensureAccount(pubkey: string): void {
@@ -107,4 +112,15 @@ export function assertDailyCostBelowCap(pubkey: string): void {
     if (current >= LLM_DAILY_COST_CAP_USD) {
         throw new Error(`Daily LLM cost cap reached: $${current.toFixed(4)} >= $${LLM_DAILY_COST_CAP_USD}`);
     }
+}
+
+export function setSuperuser(config: { pubkey: string; value: boolean }): { ok: boolean } {
+    ensureAccount(config.pubkey);
+    const info = stmtSetSuperuser.run(config.value ? 1 : 0, config.pubkey);
+    return { ok: info.changes > 0 };
+}
+
+export function isSuperuser(pubkey: string): boolean {
+    const acct = getAccount(pubkey);
+    return !!(acct && acct.superuser);
 }

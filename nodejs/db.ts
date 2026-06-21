@@ -14,7 +14,8 @@ CREATE TABLE IF NOT EXISTS accounts (
     pubkey TEXT PRIMARY KEY,
     created_at INTEGER NOT NULL,
     daily_cost_usd REAL NOT NULL DEFAULT 0,
-    daily_cost_date TEXT NOT NULL DEFAULT ''
+    daily_cost_date TEXT NOT NULL DEFAULT '',
+    superuser INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS account_ips (
@@ -62,6 +63,11 @@ CREATE TABLE IF NOT EXISTS oauth_tokens (
 CREATE INDEX IF NOT EXISTS idx_oauth_tokens_account ON oauth_tokens(account_pubkey);
 CREATE INDEX IF NOT EXISTS idx_oauth_tokens_google ON oauth_tokens(google_user_id);
 `);
+
+const accountCols = db.pragma("table_info(accounts)") as { name: string }[];
+if (!accountCols.some(c => c.name === "superuser")) {
+    db.exec(`ALTER TABLE accounts ADD COLUMN superuser INTEGER NOT NULL DEFAULT 0`);
+}
 
 export function todayYMD(): string {
     const d = new Date();

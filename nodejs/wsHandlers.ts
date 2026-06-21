@@ -2,11 +2,14 @@ import {
     addGoogleLink,
     ensureAccount,
     getCurrentDailyCost,
+    isSuperuser,
     listGoogleLinks,
+    LLM_DAILY_COST_CAP_USD,
     removeGoogleLink,
     touchAccount,
 } from "./accounts";
 import { LLM_INACTIVE_DEVICES_IN_CONTEXT, SEND_TO_DEVICE_DEFAULT_TIMEOUT_MS } from "./config";
+import { todayYMD } from "./db";
 import {
     consumePendingPairing,
     isDevice,
@@ -136,7 +139,12 @@ export async function dispatch(config: {
                 sendToDevice: ({ devicePubkey, payload }) => registry.sendToDevice({ devicePubkey, payload }),
             });
         },
-        "daily-cost": () => ({ usd: getCurrentDailyCost(ctx.pubkey) }),
+        "daily-cost": () => ({
+            usd: getCurrentDailyCost(ctx.pubkey),
+            capUsd: LLM_DAILY_COST_CAP_USD,
+            date: todayYMD(),
+            superuser: isSuperuser(ctx.pubkey),
+        }),
     };
 
     const deviceOps: Record<string, () => Promise<unknown> | unknown> = {
