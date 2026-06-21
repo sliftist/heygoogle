@@ -1,5 +1,4 @@
 import {
-    addGoogleLink,
     ensureAccount,
     getAdditionalPrompt,
     getCurrentDailyCost,
@@ -134,12 +133,6 @@ export async function dispatch(config: {
             if (!googleUserId) throw new Error("Missing google_user_id");
             const result = removeGoogleLink({ pubkey: ctx.pubkey, googleUserId });
             return { ...result, ...listGoogleLinksShape(ctx.pubkey) };
-        },
-        "bind-google-link": () => {
-            const googleUserId = String(data.google_user_id || "");
-            if (!googleUserId) throw new Error("Missing google_user_id");
-            addGoogleLink({ googleUserId, pubkey: ctx.pubkey });
-            return { ok: true };
         },
         "send-to-device": async () => {
             const devicePubkey = String(data.device_pubkey || "");

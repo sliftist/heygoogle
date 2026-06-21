@@ -86,8 +86,7 @@ All shapes below describe `secured.type` and `secured.data`. Response goes in `{
 | `update-device-description` | `{ device_pubkey, description }` | `{ updated: bool }` — rewrites the description shown to the LLM (and `list-devices`) |
 | `register-device-confirm` | `{ device_pubkey, otp }` | `{ ok: true }` (fails if OTP doesn't match or pairing expired/missing) |
 | `list-google-links` | `{}` | `{ links: [{ google_user_id, linked_at }] }` |
-| `unregister-google-link` | `{ google_user_id }` | `{ removed: bool }` |
-| `bind-google-link` | `{ google_user_id }` | `{ ok: true }` — manually associate an existing google_user_id with this account |
+| `unregister-google-link` | `{ google_user_id }` | `{ removed: bool, links: [...] }` |
 | `send-to-device` | `{ device_pubkey, payload, timeoutMs? }` | `{ response }` — fails if device isn't connected to this server |
 | `llm-prompt` | `{ prompt }` | `{ reply, toolCallsUsed, costUsd, dailyCostUsd }` — server invokes LLM with one tool per active + top-3-inactive devices, named `dev1`, `dev2`, ... per call (so the model can refer to them in its reply). Chains up to 10 tool calls, enforces $0.15/day cap |
 | `daily-cost` | `{}` | `{ usd, capUsd, date, superuser }` — `usd` is today's spend, `capUsd` is the per-day cap, `date` is today's UTC YMD, `superuser` is the account flag |
