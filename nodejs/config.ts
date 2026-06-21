@@ -33,6 +33,8 @@ export const CORS_ROOT_DOMAIN = ["vidgridweb", "com"];
 
 export const ENVELOPE_TIMESTAMP_WINDOW_MS = 60 * 1000;
 
+export const OAUTH_CODE_MAX_AGE_MS = 15 * 60 * 1000;
+
 export const MAX_IPS_PER_ACCOUNT = 100;
 
 export const MAX_SU_GOOGLE_REQUESTS = 100;

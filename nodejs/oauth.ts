@@ -5,11 +5,12 @@ import {
     ACCESS_TOKEN_TTL_MS,
     EXTERNAL_AUTHORIZE_URL,
     GOOGLE_REDIRECT_PREFIXES,
+    OAUTH_CODE_MAX_AGE_MS,
 } from "./config";
 import { addGoogleLink, ensureAccount, removeGoogleLink } from "./accounts";
 import { db } from "./db";
+import { parseSignedEnvelope } from "./envelope";
 import { log } from "./log";
-import { validateSpkiPubkey } from "./crypto";
 import { loadClientSecret } from "./storage";
 
 const stmtInsertToken = db.prepare(`
@@ -117,11 +118,17 @@ export async function handleToken(req: http.IncomingMessage, res: http.ServerRes
     const grantType = form.grant_type || "";
 
     if (grantType === "authorization_code") {
-        const pubkeyB64 = form.code || "";
+        const codeB64 = form.code || "";
+        let pubkeyB64: string;
         try {
-            await validateSpkiPubkey(pubkeyB64);
+            const envelopeJson = Buffer.from(codeB64, "base64").toString("utf8");
+            const env = await parseSignedEnvelope(envelopeJson, { maxAgeMs: OAUTH_CODE_MAX_AGE_MS });
+            if (env.secured.type !== "oauth-link") {
+                throw new Error(`Expected secured.type='oauth-link', got '${env.secured.type}'`);
+            }
+            pubkeyB64 = env.pubkey;
         } catch (err) {
-            log("oauth", `token rejected: code is not a valid SPKI pubkey: ${err && (err as Error).message || err}`);
+            log("oauth", `token rejected: invalid signed code envelope: ${err && (err as Error).message || err}`);
             sendJSON(res, 400, { error: "invalid_grant" });
             return;
         }

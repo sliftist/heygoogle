@@ -20,7 +20,9 @@ export type VerifiedEnvelope = {
     secured: Secured;
 };
 
-export async function parseSignedEnvelope(raw: string): Promise<VerifiedEnvelope> {
+export async function parseSignedEnvelope(raw: string, options?: { maxAgeMs?: number }): Promise<VerifiedEnvelope> {
+    const window = options && options.maxAgeMs !== undefined ? options.maxAgeMs : ENVELOPE_TIMESTAMP_WINDOW_MS;
+
     const env = JSON.parse(raw) as Envelope;
     if (!env || typeof env !== "object") throw new Error("Envelope must be an object");
     if (!env.secured || typeof env.secured !== "object") throw new Error("Envelope missing secured object");
@@ -34,8 +36,8 @@ export async function parseSignedEnvelope(raw: string): Promise<VerifiedEnvelope
     if (typeof s.timestamp !== "number") throw new Error("secured.timestamp must be number");
 
     const drift = Math.abs(Date.now() - s.timestamp);
-    if (drift > ENVELOPE_TIMESTAMP_WINDOW_MS) {
-        throw new Error(`Envelope timestamp drift ${drift}ms exceeds window ${ENVELOPE_TIMESTAMP_WINDOW_MS}ms`);
+    if (drift > window) {
+        throw new Error(`Envelope timestamp drift ${drift}ms exceeds window ${window}ms`);
     }
 
     const bytes = Buffer.from(canonicalJSON(s), "utf8");
