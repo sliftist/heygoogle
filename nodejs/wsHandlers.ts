@@ -25,6 +25,7 @@ import {
     removeDeviceFromAccount,
     setPendingPairing,
     touchDeviceActive,
+    updateDeviceCapabilities,
     updateDeviceDescription,
 } from "./devices";
 import { runLLMWithDeviceTools, DeviceForLLM } from "./llm";
@@ -228,6 +229,12 @@ export async function dispatch(config: {
             const accountPubkey = String(data.account_pubkey || "");
             if (!accountPubkey) throw new Error("Missing account_pubkey");
             return removeAccountFromDevice({ devicePubkey: ctx.pubkey, accountPubkey });
+        },
+        "update-capabilities": () => {
+            if (data.capabilities === undefined) throw new Error("Missing capabilities");
+            const result = updateDeviceCapabilities({ devicePubkey: ctx.pubkey, capabilities: data.capabilities });
+            if (result.updatedRows === 0) throw new Error("Device not registered with any account");
+            return { ok: true, accountsUpdated: result.updatedRows };
         },
     };
 

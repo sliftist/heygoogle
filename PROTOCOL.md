@@ -104,6 +104,7 @@ All shapes below describe `secured.type` and `secured.data`. Response goes in `{
 | `register-device-pairing` | `{ otp, description, capabilities }` | `{ ok: true }` — creates a pending pairing keyed by this device's pubkey; expires after 10 min; an account then confirms with the same `(device_pubkey, otp)` |
 | `list-accounts` | `{}` | `{ accounts: [{ account_pubkey, registered_at }] }` |
 | `unregister-account` | `{ account_pubkey }` | `{ removed: bool }` |
+| `update-capabilities` | `{ capabilities }` | `{ ok: true, accountsUpdated }` — replaces the stored capabilities for this device across **every** account it's registered with. Devices should call this on each reconnect so changes to their capability set propagate to accounts and the LLM. |
 
 ### Server → device (unsolicited)
 

@@ -181,8 +181,8 @@ const DEFAULT_DEVICES: Device[] = [
         type: "action.devices.types.TV",
         traits: MEDIA_TRAITS,
         name: {
-            name: "TV",
-            nicknames: ["Living Room TV", "the TV", "big screen"],
+            name: "main tv",
+            nicknames: ["main TV", "the main TV", "Living Room TV", "the TV", "big screen"],
             defaultNames: ["heygoogle TV"],
         },
         willReportState: false,
