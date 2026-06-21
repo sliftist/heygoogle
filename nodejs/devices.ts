@@ -1,5 +1,6 @@
-import { PENDING_PAIRING_TTL_MS } from "./config";
+import { PENDING_PAIRING_PURGE_INTERVAL_MS, PENDING_PAIRING_TTL_MS } from "./config";
 import { db } from "./db";
+import { logErr } from "./log";
 
 const stmtInsertPending = db.prepare(`
 INSERT INTO pending_pairings (device_pubkey, otp, description, capabilities_json, created_at) VALUES (?, ?, ?, ?, ?)
@@ -61,6 +62,14 @@ export type DeviceAccountRow = {
 function purgeExpired(): void {
     stmtPurgeExpiredPendings.run(Date.now() - PENDING_PAIRING_TTL_MS);
 }
+
+setInterval(() => {
+    try {
+        purgeExpired();
+    } catch (err) {
+        logErr("devices", "periodic pending_pairings purge failed", err);
+    }
+}, PENDING_PAIRING_PURGE_INTERVAL_MS).unref();
 
 export function setPendingPairing(config: {
     devicePubkey: string;

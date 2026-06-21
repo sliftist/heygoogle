@@ -48,7 +48,7 @@ function main() {
         throw new Error(`Missing TLS cert at ${TLS_CERT_PATH} or key at ${TLS_KEY_PATH}. Run \`yarn provision-cloudflare\` first.`);
     }
     const client = loadClientSecret();
-    log("boot", `client_id=${client.clientId} client_secret=${client.clientSecret}`);
+    log("boot", `client_id=${client.clientId} (secret loaded from clientSecret.json, not logged)`);
 
     const server = https.createServer(
         {
