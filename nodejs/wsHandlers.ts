@@ -20,6 +20,7 @@ import {
     removeDeviceFromAccount,
     setPendingPairing,
     touchDeviceActive,
+    updateDeviceDescription,
 } from "./devices";
 import { runLLMWithDeviceTools, DeviceForLLM } from "./llm";
 
@@ -80,6 +81,15 @@ export async function dispatch(config: {
             const devicePubkey = String(data.device_pubkey || "");
             if (!devicePubkey) throw new Error("Missing device_pubkey");
             return removeDeviceFromAccount({ accountPubkey: ctx.pubkey, devicePubkey });
+        },
+        "update-device-description": () => {
+            const devicePubkey = String(data.device_pubkey || "");
+            const description = String(data.description || "");
+            if (!devicePubkey) throw new Error("Missing device_pubkey");
+            if (!description) throw new Error("Missing description");
+            const result = updateDeviceDescription({ accountPubkey: ctx.pubkey, devicePubkey, description });
+            if (!result.updated) throw new Error("Device not found on this account");
+            return result;
         },
         "register-device-confirm": () => {
             const devicePubkey = String(data.device_pubkey || "");

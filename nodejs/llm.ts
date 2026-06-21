@@ -1,5 +1,4 @@
 import fs from "fs";
-import crypto from "crypto";
 import {
     LLM_DAILY_COST_CAP_USD,
     LLM_MAX_TOOL_ITERATIONS,
@@ -62,26 +61,28 @@ function loadOpenRouterKey(): string {
     return cachedKey;
 }
 
-function deviceToolName(devicePubkey: string): string {
-    const hash = crypto.createHash("sha256").update(devicePubkey).digest("hex");
-    return `device_${hash.slice(0, 12)}`;
+function shortIdFor(index: number): string {
+    return `dev${index + 1}`;
 }
 
-function deviceToolByName(devices: DeviceForLLM[]): Map<string, DeviceForLLM> {
-    const map = new Map<string, DeviceForLLM>();
-    for (const d of devices) map.set(deviceToolName(d.devicePubkey), d);
-    return map;
+type DeviceTool = {
+    shortId: string;
+    device: DeviceForLLM;
+};
+
+function assignShortIds(devices: DeviceForLLM[]): DeviceTool[] {
+    return devices.map((device, i) => ({ shortId: shortIdFor(i), device }));
 }
 
-function buildTools(devices: DeviceForLLM[]): ToolDef[] {
-    return devices.map(d => {
-        const status = d.connected ? "CONNECTED" : "OFFLINE";
-        const caps = JSON.stringify(d.capabilities);
+function buildTools(assigned: DeviceTool[]): ToolDef[] {
+    return assigned.map(({ shortId, device }) => {
+        const status = device.connected ? "CONNECTED" : "OFFLINE";
+        const caps = JSON.stringify(device.capabilities);
         return {
             type: "function" as const,
             function: {
-                name: deviceToolName(d.devicePubkey),
-                description: `[${status}] ${d.description}. Capabilities: ${caps}. Pass a JSON payload appropriate for this device.`,
+                name: shortId,
+                description: `[${status}] ${device.description}. Capabilities: ${caps}. Pass a JSON payload appropriate for this device. Refer to this device as ${shortId} in your replies.`,
                 parameters: {
                     type: "object" as const,
                     properties: {
@@ -92,6 +93,14 @@ function buildTools(devices: DeviceForLLM[]): ToolDef[] {
             },
         };
     });
+}
+
+function devicesSummary(assigned: DeviceTool[]): string {
+    if (assigned.length === 0) return "(no devices registered)";
+    return assigned.map(({ shortId, device }) => {
+        const status = device.connected ? "CONNECTED" : "OFFLINE";
+        return `- ${shortId} [${status}]: ${device.description}`;
+    }).join("\n");
 }
 
 async function callOpenRouter(config: {
@@ -128,13 +137,18 @@ export async function runLLMWithDeviceTools(config: {
 }): Promise<{ reply: string; toolCallsUsed: number; costUsd: number; dailyCostUsd: number }> {
     assertDailyCostBelowCap(config.accountPubkey);
 
-    const toolMap = deviceToolByName(config.devices);
-    const tools = buildTools(config.devices);
+    const assigned = assignShortIds(config.devices);
+    const toolMap = new Map<string, DeviceForLLM>();
+    for (const { shortId, device } of assigned) toolMap.set(shortId, device);
+    const tools = buildTools(assigned);
 
     const messages: ChatMessage[] = [
         {
             role: "system",
-            content: `You are a control assistant for a user's connected devices. Use the available tools to interact with devices. Each tool sends a JSON payload to one device and returns its response. Prefer CONNECTED devices. Keep messages short. When done, reply with a final natural-language summary.`,
+            content: `You are a control assistant for a user's connected devices. Each device has a short ID (dev1, dev2, ...) and a human description. Refer to devices by their short ID in your replies. Use the corresponding tool to send a JSON payload to a device; it returns the device's response. Prefer CONNECTED devices when possible. Keep replies short.
+
+Available devices:
+${devicesSummary(assigned)}`,
         },
         { role: "user", content: config.prompt },
     ];
@@ -188,4 +202,4 @@ export async function runLLMWithDeviceTools(config: {
     };
 }
 
-export const _testHelpers = { deviceToolName, LLM_DAILY_COST_CAP_USD };
+export const _testHelpers = { shortIdFor, LLM_DAILY_COST_CAP_USD };

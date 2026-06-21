@@ -27,6 +27,8 @@ SELECT account_pubkey, registered_at FROM devices WHERE device_pubkey = ? ORDER 
 
 const stmtDeleteDevice = db.prepare(`DELETE FROM devices WHERE account_pubkey = ? AND device_pubkey = ?`);
 
+const stmtUpdateDescription = db.prepare(`UPDATE devices SET description = ? WHERE account_pubkey = ? AND device_pubkey = ?`);
+
 const stmtDeleteDeviceFromAccount = db.prepare(`DELETE FROM devices WHERE device_pubkey = ? AND account_pubkey = ?`);
 
 const stmtTouchDeviceActive = db.prepare(`UPDATE devices SET last_active_at = ? WHERE device_pubkey = ?`);
@@ -104,6 +106,11 @@ export function listAccountsForDevice(devicePubkey: string): DeviceAccountRow[] 
 export function removeDeviceFromAccount(config: { accountPubkey: string; devicePubkey: string }): { removed: boolean } {
     const info = stmtDeleteDevice.run(config.accountPubkey, config.devicePubkey);
     return { removed: info.changes > 0 };
+}
+
+export function updateDeviceDescription(config: { accountPubkey: string; devicePubkey: string; description: string }): { updated: boolean } {
+    const info = stmtUpdateDescription.run(config.description, config.accountPubkey, config.devicePubkey);
+    return { updated: info.changes > 0 };
 }
 
 export function removeAccountFromDevice(config: { devicePubkey: string; accountPubkey: string }): { removed: boolean } {
