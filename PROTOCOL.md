@@ -141,9 +141,19 @@ Error responses are `{ type: "error", id, error }` where `error` is a human-read
 
 ## OAuth (Google Home) flow
 
-Three URLs:
+### Deep link from your site
 
-- **`GET /oauth/authorize`** — Google opens this. We validate `client_id` + `redirect_uri` (must be on the Google allowlist) then 302-redirect to the **external** authorize page (`https://vidgridweb.com?page=heygoogle`) with all query params preserved.
+To start the linking flow from outside Google Home (e.g. a "Link with Google Home" button on your management page), use this URL:
+
+```
+https://home.google.com/get-app/?deeplink=setup/ha_linking?agent_id=gridvid-0046ef
+```
+
+The `agent_id=gridvid-0046ef` identifies this action in Google's directory. The URL is not secret. On a device with the Home app installed it opens Home directly at our action's linking screen; on a device without it, the user is prompted to install Home first. After they tap "link," Google Home opens an in-app browser to our `/oauth/authorize`, which then redirects to the external page (see below).
+
+### Three URLs in play
+
+- **`GET /oauth/authorize`** — Google Home opens this (whether they reached us via the deep link above or via in-Home-app search). We validate `client_id` + `redirect_uri` (must be on the Google allowlist) then 302-redirect to the **external** authorize page (`https://vidgridweb.com?page=heygoogle`) with all query params preserved.
 - **`POST /oauth/token`** — Google exchanges `code` here. The code is the user's **base64 SPKI pubkey**; we validate it parses as P-256 and mint an access+refresh token tied to that pubkey + a synthetic `google_user_id`. Refresh-token grant works the standard way.
 - **`POST /smarthome/fulfillment`** — Google calls this for SYNC/QUERY/EXECUTE/DISCONNECT. Bearer token resolves to `{ pubkey, googleUserId }`. DISCONNECT invalidates only the affected `google_user_id`, never the account.
 
